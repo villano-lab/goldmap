@@ -11,7 +11,7 @@
           --raw:#243a52; --step:#4a3d17; --trace:#3a3052; --out:#254a2a; --edge:#7d7a6c; } }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
-  main { max-width:860px; margin:0 auto; padding:20px 16px 60px; }
+  main { max-width:900px; margin:0 auto; padding:20px 16px 60px; }
   header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
   h1 { font-size:1.35rem; margin:0; font-weight:600; } h1 span { color:var(--accent); }
   nav { display:flex; gap:4px; margin:14px 0 6px; border-bottom:1px solid var(--line); overflow-x:auto; }
@@ -23,6 +23,7 @@
   label { display:block; font-size:.82rem; color:var(--muted); margin:12px 0 3px; }
   input, select, textarea, button { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 9px; }
   input[type=text], input[type=number], select, textarea { width:100%; } input[type=checkbox] { width:auto; accent-color:var(--accent); }
+  ::placeholder { color:var(--muted); opacity:.65; }
   button { cursor:pointer; } button.primary { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); font-weight:600; }
   button.link { border:0; background:none; color:var(--muted); padding:2px 4px; text-decoration:underline; font-size:.85rem; }
   .row { display:flex; gap:8px; align-items:flex-end; } .row > :first-child { flex:1; }
@@ -35,14 +36,19 @@
   .step { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:10px 0; }
   .step header { align-items:center; } .step h3 { margin:0; font-size:.95rem; font-weight:600; } .step h3 small { font-weight:400; color:var(--muted); }
   .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0 12px; }
+  .filters { grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); margin-top:6px; }
+  .filters label { margin-top:8px; }
   details { margin-top:10px; } summary { cursor:pointer; color:var(--muted); font-size:.85rem; }
   pre { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; font-size:.78rem; max-height:360px; }
-  .hint { padding:18px 0; color:var(--muted); }
-  #flow { width:100%; height:auto; background:var(--card); border:1px solid var(--line); border-radius:8px; margin-top:8px; }
-  #flow .box { stroke:var(--edge); stroke-width:1; cursor:pointer; } #flow .box:hover { stroke:var(--accent); stroke-width:2; }
-  #flow .raw { fill:var(--raw); } #flow .step { fill:var(--step); } #flow .trace { fill:var(--trace); } #flow .out { fill:var(--out); } #flow .clash { stroke:var(--bad); stroke-width:2; }
-  #flow text { fill:var(--fg); font:13px system-ui, sans-serif; pointer-events:none; } #flow text.sub { fill:var(--muted); font-size:11px; }
-  #flow path { fill:none; stroke:var(--edge); stroke-width:1.5; } #flow marker path { fill:var(--edge); stroke:none; }
+  .hint { padding:14px 0; color:var(--muted); }
+  #graph { width:100%; height:auto; background:var(--card); border:1px solid var(--line); border-radius:8px; margin-top:10px; touch-action:none; user-select:none; }
+  #graph .box { stroke:var(--edge); stroke-width:1; } #graph g.node { cursor:grab; } #graph g.node.fixed { cursor:pointer; } #graph g.node:hover .box { stroke:var(--accent); stroke-width:2; }
+  #graph g.node.selected .box { stroke:var(--accent); stroke-width:3; }
+  #graph .raw { fill:var(--raw); } #graph .step { fill:var(--step); } #graph .trace { fill:var(--trace); } #graph .out { fill:var(--out); } #graph .clash { stroke:var(--bad); stroke-width:2; }
+  #graph text { fill:var(--fg); font:13px system-ui, sans-serif; pointer-events:none; } #graph text.sub { fill:var(--muted); font-size:11px; }
+  #graph path.edge { fill:none; stroke:var(--edge); stroke-width:1.5; } #graph path.hit { fill:none; stroke:transparent; stroke-width:12; cursor:pointer; }
+  #graph path.edge.linking { stroke:var(--accent); stroke-dasharray:5 4; } #graph marker path { fill:var(--edge); stroke:none; }
+  #graph circle.port { fill:var(--card); stroke:var(--edge); stroke-width:1.5; } #graph circle.port.out { cursor:crosshair; } #graph circle.port:hover { stroke:var(--accent); fill:var(--accent); }
   .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:.8rem; color:var(--muted); margin-top:6px; } .legend i { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:5px; vertical-align:-1px; border:1px solid var(--edge); }
 </style>
 </head>
@@ -51,20 +57,28 @@
   <header><h1><span>gold</span>map</h1><span class="muted">lay out a processing, step by step</span></header>
   <nav id="tabs">
     <button data-tab="data" aria-current="true">1 · Data<small id="t-data">choose series</small></button>
-    <button data-tab="steps">2 · Steps<small id="t-steps">none yet</small></button>
-    <button data-tab="flow">3 · Flow<small id="t-flow">what comes out</small></button>
-    <button data-tab="files">4 · Files<small>name and write</small></button>
+    <button data-tab="steps">2 · Steps<small id="t-steps">build the processing</small></button>
+    <button data-tab="files">3 · Files<small>name and write</small></button>
     <button data-tab="newdet" style="margin-left:auto">+ Detector<small>add to the registry</small></button>
   </nav>
 
   <section id="data">
-    <p class="guide">Start with the raw data: which folder holds the dumps, which series to process, and which detector took them.</p>
+    <p class="guide">Start with the raw data: which folder holds the dumps, which series to process, and which detector took them. Tip: in an empty box, press Tab to fill in the grey suggestion.</p>
     <label for="root">Folder of the raw dumps</label>
     <div class="row"><input id="root" type="text" list="roots" autocomplete="off"><datalist id="roots"></datalist><button id="scan">Look for series</button></div>
     <p class="muted" id="scanmsg"></p>
     <div id="serieswrap" hidden>
-      <div class="row"><input id="filter" type="text" placeholder="Filter the series…"><label style="margin:0 0 6px"><input type="checkbox" id="all"> all shown</label></div>
-      <div class="list"><table id="series"><thead><tr><th></th><th>Series</th><th>Dumps</th><th>HV (V)</th><th>Trigger</th></tr></thead><tbody></tbody></table></div>
+      <div class="row"><input id="filter" type="text" placeholder="Search the series…" data-suggest="no"><button id="clearfilters" class="link" type="button">clear filters</button></div>
+      <div class="grid filters">
+        <div><label for="f-hvmin">HV from (V)</label><input id="f-hvmin" type="number" step="any" placeholder="-90" data-suggest="no"></div>
+        <div><label for="f-hvmax">HV to (V)</label><input id="f-hvmax" type="number" step="any" placeholder="0" data-suggest="no"></div>
+        <div><label for="f-trigger">Trigger</label><select id="f-trigger"></select></div>
+        <div><label for="f-type">Type</label><select id="f-type"></select></div>
+        <div><label for="f-shield">Source / shield</label><select id="f-shield"></select></div>
+        <div><label for="f-dur">At least (min)</label><input id="f-dur" type="number" min="0" placeholder="60" data-suggest="no"></div>
+      </div>
+      <div class="row" style="margin-top:8px"><span class="muted" id="shown"></span><label style="margin:0 0 4px;white-space:nowrap"><input type="checkbox" id="all"> choose all shown</label></div>
+      <div class="list"><table id="series"><thead><tr><th></th><th>Series</th><th>Dumps</th><th>HV (V)</th><th>Trigger</th><th>Type</th><th>Min</th></tr></thead><tbody></tbody></table></div>
     </div>
     <label for="detector">Detector</label><select id="detector"></select>
     <p class="muted" id="detinfo"></p>
@@ -73,18 +87,13 @@
   </section>
 
   <section id="steps" hidden>
-    <p class="guide">Add the processing, in order. Each step reads the raw trace and writes numbers (<em>quantities</em>), or filters the trace for a later step.</p>
-    <div class="row"><div><label for="newalg" style="margin-top:0">Add a step</label><select id="newalg"></select></div><button id="addstep">Add</button></div>
-    <div id="stepslist"><p class="hint" id="nosteps">No steps yet. Pick an algorithm above and press Add.</p></div>
-    <div class="actions"><button data-go="data">Back</button><button class="primary" data-go="flow">Next: see the flow</button></div>
-  </section>
-
-  <section id="flow" hidden>
-    <p class="guide">What you have built: the raw data on the left, your steps in the middle, and the quantities that end up in the output files on the right. Click a box to edit it.</p>
-    <svg id="flow-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <p class="guide">Build the processing as boxes. Add a step and drag it where you like; click a box to set its parameters. To make a step read a filter's result, drag from the filter's right-hand dot onto that step (double-click a line to undo). Steps run left to right through the lines; the green boxes are the quantities that end up in the output files.</p>
+    <div class="row"><div><label for="newalg" style="margin-top:0">Add a step</label><select id="newalg"></select></div><button id="addstep" class="primary">Add</button></div>
+    <svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="legend"><span><i style="background:var(--raw)"></i>raw data</span><span><i style="background:var(--step)"></i>step that gives quantities</span><span><i style="background:var(--trace)"></i>filter (gives a trace)</span><span><i style="background:var(--out)"></i>output (RQ)</span></div>
     <p class="muted" id="flowmsg"></p>
-    <div class="actions"><button data-go="steps">Back</button><button class="primary" data-go="files">Next: files</button></div>
+    <div id="stepdetail"><p class="hint" id="nosteps">No steps yet. Pick an algorithm above and press Add.</p></div>
+    <div class="actions"><button data-go="data">Back</button><button class="primary" data-go="files">Next: files</button></div>
   </section>
 
   <section id="newdet" hidden>
@@ -98,19 +107,19 @@
       <div><label for="d-status">How sure are you?</label><select id="d-status"><option value="inferred">inferred (a guess or a reading of a table)</option><option value="confirmed">confirmed (a file or a document says so)</option></select></div>
       <div><label for="d-series">Series it applies to, optional (comma-separated)</label><input id="d-series" type="text" placeholder="07221203_2025"></div>
     </div>
-    <label for="d-evidence">Evidence: where does this come from?</label><textarea id="d-evidence" rows="3"></textarea>
+    <label for="d-evidence">Evidence: where does this come from?</label><textarea id="d-evidence" rows="3" placeholder="A table, a file, a colleague…" data-suggest="no"></textarea>
 
     <h3 style="font-size:.95rem;margin:18px 0 0">Readout</h3>
     <label for="d-readout">The readout this detector uses</label><select id="d-readout"></select>
     <div id="d-newreadout" hidden>
       <div class="grid">
         <div><label for="r-name">Name of the new readout</label><input id="r-name" type="text" placeholder="DCRC_RUN76"></div>
-        <div><label for="r-pre">Samples before the trigger (pretrigger)</label><input id="r-pre" type="number" min="0"></div>
-        <div><label for="r-glitch">Samples to skip at the start (glitch)</label><input id="r-glitch" type="number" min="0" value="10"></div>
+        <div><label for="r-pre">Samples before the trigger (pretrigger)</label><input id="r-pre" type="number" min="0" placeholder="500"></div>
+        <div><label for="r-glitch">Samples to skip at the start (glitch)</label><input id="r-glitch" type="number" min="0" placeholder="10"></div>
         <div><label for="r-period">Sample period (seconds)</label><input id="r-period" type="text" placeholder="8e-7"></div>
         <div><label for="r-status">How sure are you?</label><select id="r-status"><option value="inferred">inferred</option><option value="confirmed">confirmed</option></select></div>
       </div>
-      <label for="r-evidence">Evidence for these numbers</label><textarea id="r-evidence" rows="2"></textarea>
+      <label for="r-evidence">Evidence for these numbers</label><textarea id="r-evidence" rows="2" placeholder="Measured on…, taken from…" data-suggest="no"></textarea>
     </div>
 
     <h3 style="font-size:.95rem;margin:18px 0 0">Channels (idx files)</h3>
@@ -128,7 +137,7 @@
     <p class="guide">Name the dataset, say where the results go, and write the definition (and the run metadata). goldsluice then checks that it finds the raw files.</p>
     <div class="grid">
       <div><label for="name">Name of the dataset</label><input id="name" type="text" placeholder="r76-82v"></div>
-      <div><label for="output">Where the results go</label><input id="output" type="text" placeholder="C:/NSDF/goldsluice-output/r76-82v"></div>
+      <div><label for="output">Where the results go</label><input id="output" type="text" placeholder="~/goldsluice-output/r76-82v"></div>
     </div>
     <details>
       <summary>Run metadata (HV, trigger, …) per series</summary>
@@ -139,9 +148,9 @@
     <details>
       <summary>More</summary>
       <label for="folder">Write the files into</label><input id="folder" type="text">
-      <label for="description">Description</label><input id="description" type="text">
+      <label for="description">Description</label><input id="description" type="text" placeholder="What this processing is for" data-suggest="no">
     </details>
-    <div class="actions"><button data-go="flow">Back</button><div><button id="preview">Preview</button><button id="write" class="primary">Write and check</button></div></div>
+    <div class="actions"><button data-go="steps">Back</button><div><button id="preview">Preview</button><button id="write" class="primary">Write and check</button></div></div>
     <p id="msg"></p>
     <pre id="out" hidden></pre>
   </section>
@@ -150,10 +159,10 @@
 <script>
 const TOKEN = "__TOKEN__";
 const $ = (id) => document.getElementById(id);
-let state = {algorithms: [], detectors: [], facts: {}, roots: [], registry: [], folder: ""};
+let state = {algorithms: [], detectors: [], readouts: [], targets: [], facts: {}, roots: [], registry: [], folder: "", output_root: "~/goldsluice-output"};
 let series = [];                                   // [{series, dumps, first, last}] of the last scan
-let steps = [];                                    // [{id, algorithm, kind, el, fields}]
-let stepCount = 0;
+let steps = [];                                    // [{id, algorithm, kind, outputs, x, y, input, fields, box}]
+let stepCount = 0, selected = null, notice = "";           // `notice`: a message for the diagram, shown once
 const SVGNS = "http://www.w3.org/2000/svg";
 
 async function api(path, body) {
@@ -170,34 +179,78 @@ function svg(tag, attrs, text) { const e = document.createElementNS(SVGNS, tag);
 const fmt = (v) => (v === null || v === undefined ? "" : v);
 
 function show(tab) {
-  ["data", "steps", "flow", "files", "newdet"].forEach((t) => { $(t).hidden = t !== tab; });
+  ["data", "steps", "files", "newdet"].forEach((t) => { $(t).hidden = t !== tab; });
   document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-current", b.dataset.tab === tab));
-  if (tab === "flow") drawFlow();
-  if (tab === "files") drawMeta();
+  if (tab === "steps") drawGraph();
+  if (tab === "files") { drawMeta(); suggestFiles(); }
+  if (tab === "newdet") suggestDetector();
 }
 
+// ---- Tab fills in the grey suggestion of an empty box
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+  const t = e.target;
+  if (!(t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) || t.type === "checkbox") return;
+  if (t.value === "" && t.placeholder && t.dataset.suggest !== "no") {
+    e.preventDefault(); t.value = t.placeholder; t.dispatchEvent(new Event("input", {bubbles: true})); t.dispatchEvent(new Event("change", {bubbles: true})); t.select();
+  }
+});
+
+// ---- 1. the data: the series, with filters on what is known about them
 function chosen() { return [...document.querySelectorAll("#series tbody input[type=checkbox]:checked")].map((c) => c.dataset.series); }
 function summary() {
   const n = chosen().length;
   $("t-data").textContent = n ? `${n} series chosen` : "choose series";
-  $("t-steps").textContent = steps.length ? `${steps.length} step${steps.length > 1 ? "s" : ""}` : "none yet";
+  $("t-steps").textContent = steps.length ? `${steps.length} step${steps.length > 1 ? "s" : ""}` : "build the processing";
+  showCount();
 }
-
+function showCount() {
+  const rows = [...document.querySelectorAll("#series tbody tr")];
+  $("shown").textContent = `${rows.filter((r) => !r.hidden).length} of ${rows.length} shown, ${chosen().length} chosen`;
+}
+function fillSelect(id, values, label) {
+  const sel = $(id), keep = sel.value;
+  sel.replaceChildren(el("option", {value: "", textContent: label}), ...[...new Set(values.filter((v) => v))].sort().map((v) => el("option", {value: v, textContent: v})));
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
+}
 function drawSeries() {
   const body = $("series").querySelector("tbody"); body.replaceChildren();
   series.forEach((s) => {
     const f = state.facts[s.series] || {};
     const box = el("input", {type: "checkbox"}); box.dataset.series = s.series; box.addEventListener("change", summary);
-    const tr = el("tr", {}, el("td", {}, box), el("td", {textContent: s.series}), el("td", {textContent: s.dumps}), el("td", {textContent: fmt(f.hv_v)}), el("td", {textContent: fmt(f.trigger)}));
-    tr.dataset.text = [s.series, f.hv_v, f.trigger].join(" ").toLowerCase();
+    const tr = el("tr", {}, el("td", {}, box), el("td", {textContent: s.series}), el("td", {textContent: s.dumps}), el("td", {textContent: fmt(f.hv_v)}), el("td", {textContent: fmt(f.trigger)}),
+      el("td", {textContent: fmt(f.type)}), el("td", {textContent: fmt(f.duration_min)}));
+    tr.dataset.series = s.series; tr.dataset.text = [s.series, f.hv_v, f.trigger, f.type, f.source_shield].join(" ").toLowerCase();
     body.append(tr);
   });
+  const facts = series.map((s) => state.facts[s.series] || {});
+  fillSelect("f-trigger", facts.map((f) => f.trigger), "any trigger");
+  fillSelect("f-type", facts.map((f) => f.type), "any type");
+  fillSelect("f-shield", facts.map((f) => f.source_shield), "any source");
   $("serieswrap").hidden = !series.length;
-  summary();
+  applyFilter(); summary();
+}
+function passes(s, f) {                              // does the series with facts `f` pass the filters?
+  const q = $("filter").value.trim().toLowerCase();
+  if (q && !document.querySelector(`#series tbody tr[data-series="${s}"]`).dataset.text.includes(q)) return false;
+  const lo = $("f-hvmin").value, hi = $("f-hvmax").value, dur = $("f-dur").value;
+  if ((lo !== "" || hi !== "") && (f.hv_v === null || f.hv_v === undefined)) return false;
+  if (lo !== "" && f.hv_v < Number(lo)) return false;
+  if (hi !== "" && f.hv_v > Number(hi)) return false;
+  if ($("f-trigger").value && f.trigger !== $("f-trigger").value) return false;
+  if ($("f-type").value && f.type !== $("f-type").value) return false;
+  if ($("f-shield").value && f.source_shield !== $("f-shield").value) return false;
+  if (dur !== "" && !(f.duration_min >= Number(dur))) return false;
+  return true;
 }
 function applyFilter() {
-  const q = $("filter").value.trim().toLowerCase();
-  document.querySelectorAll("#series tbody tr").forEach((tr) => { tr.hidden = q !== "" && !tr.dataset.text.includes(q); });
+  document.querySelectorAll("#series tbody tr").forEach((tr) => { tr.hidden = !passes(tr.dataset.series, state.facts[tr.dataset.series] || {}); });
+  showCount();
+}
+function clearFilters() {
+  ["filter", "f-hvmin", "f-hvmax", "f-dur"].forEach((id) => { $(id).value = ""; });
+  ["f-trigger", "f-type", "f-shield"].forEach((id) => { $(id).value = ""; });
+  applyFilter();
 }
 
 const META = ["hv_v", "trigger", "trigger_value", "type", "source_shield", "duration_min"];
@@ -215,42 +268,73 @@ function drawMeta() {
 
 function detector() { return state.detectors.find((x) => x.name === $("detector").value); }
 function drawDetectors() {
-  const sel = $("detector"); sel.replaceChildren(el("option", {value: "", textContent: "(choose)"}));
+  const sel = $("detector"); const keep = sel.value;
+  sel.replaceChildren(el("option", {value: "", textContent: "(choose)"}));
   state.detectors.forEach((d) => sel.append(el("option", {value: d.name, textContent: d.name})));
-  if (state.detectors.length === 1) sel.value = state.detectors[0].name;
+  sel.value = keep && [...sel.options].some((o) => o.value === keep) ? keep : (state.detectors.length === 1 ? state.detectors[0].name : "");
   showDetector();
 }
 function showDetector() {
   const d = detector();
-  $("detinfo").textContent = !d ? (state.detectors.length ? "" : "No registry was given: start goldmap with --registry DIR.")
+  $("detinfo").textContent = !d ? (state.detectors.length ? "" : "No registry was given: start goldmap with --registry DIR, or add a detector with the + Detector tab.")
     : `${d.description} Channels: ${d.channels.map((c) => c.name).join(", ") || "none"} · ${d.status}.`;
 }
+
+// ---- 2. the steps: boxes on a canvas
+const VIEW_W = 1100, W = 170, STEP_H = 54, RAW_X = 12, STEPS_X0 = 250, OUT_GAP = 36;
+const FILES_X = VIEW_W - W - 12;
+const SUGGEST = {order: "4", fraction: "0.2"};         // grey suggestions for parameters that have an ordinary value; Tab fills them in
+const byId = (id) => steps.find((s) => s.id === id) || null;
+const isTrace = (s) => s.kind === "trace";
+function ownName(s) { return (s.fields.name && (s.fields.name.value.trim() || s.fields.name.placeholder)) || null; }
+function reaches(from, to) {                         // does the chain of inputs of `from` run through `to`?
+  for (let s = from, n = 0; s && n < 100; s = byId(s.input), n++) { if (s === to) return true; }
+  return false;
+}
+function channelsOf(s) {
+  const text = s.fields.channels.value.trim(), d = detector(), all = d ? d.channels : [];
+  if (text === "all") return all.map((c) => c.name);
+  if (text.startsWith("role:")) return all.filter((c) => c.role === text.slice(5)).map((c) => c.name);
+  return text.split(",").map((c) => c.trim()).filter(Boolean);
+}
+function wrap(text, width) {                         // break a long list into lines of about `width` characters
+  const lines = []; let line = "";
+  text.split(" ").forEach((w) => { if ((line + " " + w).trim().length > width) { lines.push(line); line = w; } else line = (line + " " + w).trim(); });
+  if (line) lines.push(line);
+  return lines;
+}
+function suffixOf(s) { return s.fields.suffix ? s.fields.suffix.value.trim() : ""; }
 
 function addStep() {
   const alg = state.algorithms.find((a) => a.name === $("newalg").value);
   if (!alg) return;
   $("nosteps").hidden = true;
+  const record = {id: ++stepCount, algorithm: alg.name, kind: alg.kind, outputs: alg.outputs, input: null, fields: {}, alg};
   const box = el("div", {className: "step"});
-  const record = {id: ++stepCount, algorithm: alg.name, kind: alg.kind, outputs: alg.outputs, el: box, fields: {}};
-  const remove = el("button", {textContent: "Remove", type: "button", className: "link"});
+  const remove = el("button", {textContent: "Remove this step", type: "button", className: "link"});
   const result = alg.kind === "trace" ? "gives a filtered trace" : alg.outputs.join(", ");
   box.append(el("header", {className: "row"}, el("h3", {}, `${record.id}. ${alg.name} `, el("small", {textContent: "→ " + result})), remove));
   if (alg.summary) box.append(el("p", {className: "muted", textContent: alg.summary, style: "margin:2px 0 0"}));
   const grid = el("div", {className: "grid"});
-  const ch = el("input", {type: "text", value: "role:phonon"}); record.fields.channels = ch;
+  const ch = el("input", {type: "text", value: "role:phonon"}); record.fields.channels = ch; ch.addEventListener("input", drawGraph);
   grid.append(el("div", {}, el("label", {textContent: "Channels (all, role:…, or names)"}), ch));
   const auto = [];
   alg.params.forEach((p) => {
-    const input = el("input", {type: "number", step: "any"});
+    const input = el("input", {type: "number", step: "any", placeholder: SUGGEST[p.name] || ""});
     if (p.readout) { auto.push([p, input]); return; }
     record.fields[p.name] = {input};
     grid.append(el("div", {}, el("label", {textContent: p.name}), input));
   });
   if (alg.kind === "trace") {
-    record.fields.name = el("input", {type: "text", placeholder: "lp"});
-    grid.append(el("div", {}, el("label", {textContent: "Name (later steps can read it)"}), record.fields.name));
+    record.fields.name = el("input", {type: "text", placeholder: `${alg.name}${record.id}`}); record.fields.name.addEventListener("input", drawGraph);
+    grid.append(el("div", {}, el("label", {textContent: "Name (other steps read the result by this name)"}), record.fields.name));
+  } else {
+    record.fields.suffix = el("input", {type: "text", placeholder: "_lp"}); record.fields.suffix.addEventListener("input", drawGraph);
+    grid.append(el("div", {}, el("label", {textContent: "Suffix for the quantity names (when two steps give the same ones)"}), record.fields.suffix));
   }
   box.append(grid);
+  record.reads = el("select", {}); record.reads.addEventListener("change", () => setInput(record, record.reads.value === "" ? null : Number(record.reads.value)));
+  box.append(el("label", {textContent: "Reads"}), record.reads);
   if (auto.length) {                                // the parameters that belong to the readout: taken from it unless set by hand
     const more = el("details", {}, el("summary", {textContent: "Taken from the readout: " + auto.map(([p]) => p.name).join(", ")}));
     auto.forEach(([p, input]) => {
@@ -261,16 +345,129 @@ function addStep() {
     });
     box.append(more);
   }
-  if (alg.kind !== "trace" && steps.some((s) => s.kind === "trace")) {
-    const input = el("select", {}, el("option", {value: "", textContent: "the raw trace"}));
-    steps.filter((s) => s.kind === "trace").forEach((s) => input.append(el("option", {value: "@" + s.id, textContent: `the result of step ${s.id} (${s.algorithm})`})));
-    record.fields.input = input; record.fields.suffix = el("input", {type: "text", placeholder: "_lp"});
-    box.append(el("details", {open: true}, el("summary", {textContent: "What it reads"}), el("label", {textContent: "Reads"}), input,
-      el("label", {textContent: "Suffix added to the quantity names (so they do not clash)"}), record.fields.suffix));
-  }
-  remove.addEventListener("click", () => { steps = steps.filter((s) => s !== record); box.remove(); $("nosteps").hidden = steps.length > 0; summary(); });
+  remove.addEventListener("click", () => removeStep(record));
   record.box = box;
-  steps.push(record); $("stepslist").append(box); summary();
+  const sameColumn = steps.filter((s) => s.input === null).length;
+  record.x = STEPS_X0; record.y = 14 + sameColumn * (STEP_H + 24);
+  steps.push(record); $("stepdetail").append(box);
+  selectStep(record.id); summary();
+}
+function removeStep(rec) {
+  steps.forEach((s) => { if (s.input === rec.id) s.input = null; });
+  steps = steps.filter((s) => s !== rec); rec.box.remove();
+  selected = steps.length ? steps[steps.length - 1].id : null;
+  $("nosteps").hidden = steps.length > 0; selectStep(selected); summary();
+}
+function setInput(rec, id) {
+  const src = id === null ? null : byId(id);
+  if (src && (src === rec || !isTrace(src) || reaches(src, rec))) { notice = "A step can only read the result of a filter, and not in a circle."; drawGraph(); return; }
+  rec.input = src ? src.id : null;
+  if (src && rec.fields.suffix && !rec.fields.suffix.value) rec.fields.suffix.placeholder = "_" + ownName(src);
+  drawGraph();
+}
+function selectStep(id) {
+  selected = id;
+  steps.forEach((s) => { s.box.hidden = s.id !== id; });
+  drawGraph();
+}
+function refreshReads(rec) {
+  const options = [el("option", {value: "", textContent: "the raw trace"})];
+  steps.filter((t) => isTrace(t) && t !== rec && !reaches(t, rec)).forEach((t) => options.push(el("option", {value: String(t.id), textContent: `the result of ${t.id}. ${t.algorithm}`})));
+  rec.reads.replaceChildren(...options); rec.reads.value = rec.input === null ? "" : String(rec.input);
+}
+
+function drawGraph() {
+  const root = $("graph"); root.replaceChildren();
+  const names = chosen(), d = detector();
+  const dumps = series.filter((s) => names.includes(s.series)).reduce((n, s) => n + s.dumps, 0);
+  const nodes = [{id: "raw", kind: "raw", x: RAW_X, y: 14, w: W, lines: [`${names.length} series, ${dumps} dumps`, d ? d.channels.length + " channels" : "choose a detector"], title: d ? d.name : "no detector", fixed: true, tab: "data"}];
+  const edges = [], clashes = new Set(), seen = {};
+  steps.forEach((s) => {
+    const chans = channelsOf(s), trace = isTrace(s);
+    nodes.push({id: "s" + s.id, kind: trace ? "trace" : "step", x: s.x, y: s.y, w: W, title: `${s.id}. ${s.algorithm}`, step: s,
+      lines: [trace ? `filter · ${chans.length} channel${chans.length === 1 ? "" : "s"}` : `${chans.length} channel${chans.length === 1 ? "" : "s"}`]});
+    edges.push([s.input === null ? "raw" : "s" + s.input, "s" + s.id, s]);
+    if (!trace) {
+      const outs = s.outputs.map((o) => o + suffixOf(s));
+      outs.forEach((o) => chans.forEach((c) => { const key = c + "." + o; if (seen[key]) { clashes.add(seen[key]); clashes.add("o" + s.id); } else seen[key] = "o" + s.id; }));
+      nodes.push({id: "o" + s.id, kind: "out", x: s.x + W + OUT_GAP, y: s.y, w: W, title: "quantities", lines: wrap(outs.join(" "), 22), fixed: true, step: s});
+      edges.push(["s" + s.id, "o" + s.id]);
+    }
+  });
+  const outs = nodes.filter((n) => n.kind === "out");
+  nodes.push({id: "files", kind: "out", x: FILES_X, y: 14, w: W, title: "output files", lines: ["Parquet, one record per channel", "(or RQ-style ROOT)"], fixed: true, tab: "files"});
+  outs.forEach((n) => edges.push([n.id, "files"]));
+  if (!steps.length) edges.push(["raw", "files"]);
+  nodes.forEach((n) => { n.h = n.kind === "out" || n.kind === "raw" ? 30 + n.lines.length * 16 : STEP_H; });
+  const height = Math.max(240, ...nodes.map((n) => n.y + n.h + 20));
+  root.setAttribute("viewBox", `0 0 ${VIEW_W} ${height}`);
+  const defs = svg("defs"), marker = svg("marker", {id: "arrow", viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse"});
+  marker.append(svg("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(marker); root.append(defs);
+  const index = Object.fromEntries(nodes.map((n) => [n.id, n]));
+  const curve = (x1, y1, x2, y2) => { const mid = (x1 + x2) / 2; return `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2 - 2},${y2}`; };
+  edges.forEach(([a, b, s]) => {
+    const p = index[a], q = index[b]; if (!p || !q) return;
+    const dd = curve(p.x + p.w, p.y + p.h / 2, q.x, q.y + q.h / 2);
+    root.append(svg("path", {d: dd, class: "edge", "marker-end": "url(#arrow)"}));
+    if (s && s.input !== null) { const hit = svg("path", {d: dd, class: "hit"}); hit.addEventListener("dblclick", () => setInput(s, null)); root.append(hit); }
+  });
+  nodes.forEach((n) => {
+    const g = svg("g", {class: "node" + (n.fixed ? " fixed" : "") + (n.step && selected === n.step.id && !n.fixed ? " selected" : "")});
+    g.append(svg("rect", {x: n.x, y: n.y, width: n.w, height: n.h, rx: 7, class: `box ${n.kind}` + (clashes.has(n.id) ? " clash" : "")}));
+    g.append(svg("text", {x: n.x + 10, y: n.y + 20}, n.title));
+    n.lines.forEach((l, i) => g.append(svg("text", {x: n.x + 10, y: n.y + 38 + i * 16, class: "sub"}, l)));
+    if (n.step && !n.fixed) {
+      const s = n.step, cy = n.y + n.h / 2;
+      g.append(svg("circle", {cx: n.x, cy, r: 5, class: "port in"}));
+      if (isTrace(s)) { const out = svg("circle", {cx: n.x + n.w, cy, r: 6, class: "port out"}); out.addEventListener("pointerdown", (e) => startLink(e, s)); g.append(out); }
+      g.addEventListener("pointerdown", (e) => { if (!e.target.classList.contains("out")) startDrag(e, s); });
+    } else if (n.fixed) {
+      g.addEventListener("click", () => { if (n.tab) show(n.tab); else if (n.step) selectStep(n.step.id); });
+    }
+    root.append(g);
+  });
+  $("flowmsg").textContent = notice || (clashes.size ? "Two steps give a quantity of the same name on the same channel: give one of them a suffix (select its box)." : "");
+  notice = "";
+  $("flowmsg").className = "muted bad";
+  if (selected !== null && byId(selected)) refreshReads(byId(selected));
+  graphIndex = index;
+}
+let graphIndex = {};
+function svgPoint(e) { const g = $("graph"), pt = g.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(g.getScreenCTM().inverse()); }
+
+let drag = null, link = null;
+function startDrag(e, s) {
+  e.preventDefault();
+  const p = svgPoint(e);
+  drag = {s, dx: p.x - s.x, dy: p.y - s.y, moved: false, x0: p.x, y0: p.y};
+  $("graph").setPointerCapture(e.pointerId);
+}
+function startLink(e, s) {
+  e.preventDefault(); e.stopPropagation();
+  link = {from: s, x: 0, y: 0};
+  $("graph").setPointerCapture(e.pointerId);
+}
+function dropTarget(p) {                              // the step box under the point, if any
+  return steps.find((s) => { const n = graphIndex["s" + s.id]; return n && p.x >= n.x - 8 && p.x <= n.x + n.w && p.y >= n.y && p.y <= n.y + n.h; }) || null;
+}
+function onMove(e) {
+  if (drag) {
+    const p = svgPoint(e);
+    if (Math.abs(p.x - drag.x0) + Math.abs(p.y - drag.y0) > 3) drag.moved = true;
+    if (drag.moved) { drag.s.x = Math.max(RAW_X + W + 20, Math.min(FILES_X - 2 * W - OUT_GAP - 20, p.x - drag.dx)); drag.s.y = Math.max(8, p.y - drag.dy); drawGraph(); }
+  } else if (link) {
+    const p = svgPoint(e), from = graphIndex["s" + link.from.id];
+    const old = document.querySelector("#graph path.linking"); if (old) old.remove();
+    if (from) { const x1 = from.x + from.w, y1 = from.y + from.h / 2, mid = (x1 + p.x) / 2; $("graph").append(svg("path", {d: `M${x1},${y1} C${mid},${y1} ${mid},${p.y} ${p.x},${p.y}`, class: "edge linking"})); }
+  }
+}
+function onUp(e) {
+  if (drag) { const {s, moved} = drag; drag = null; if (!moved) selectStep(s.id); else { selectStep(s.id); } }
+  else if (link) {
+    const from = link.from; link = null;
+    const target = dropTarget(svgPoint(e));
+    if (target && target !== from) setInput(target, from.id); else drawGraph();
+  }
 }
 
 function stepForm(s) {
@@ -282,45 +479,85 @@ function stepForm(s) {
     if (f.input.value === "") throw new Error(`Step ${s.id} (${s.algorithm}): give a value for ${name}.`);
     out.params[name] = Number(f.input.value);
   }
-  if (s.fields.name && s.fields.name.value) { out.name = s.fields.name.value.trim(); s.givenName = out.name; }
-  if (s.fields.suffix && s.fields.suffix.value) out.suffix = s.fields.suffix.value.trim();
+  if (isTrace(s)) out.name = ownName(s);
+  if (s.input !== null) out.input = ownName(byId(s.input));
+  if (suffixOf(s)) out.suffix = suffixOf(s);
   return out;
+}
+function ordered() {                                  // the steps in an order in which every step comes after the one it reads
+  const done = [], left = [...steps];
+  while (left.length) {
+    const next = left.find((s) => s.input === null || done.some((d) => d.id === s.input));
+    if (!next) throw new Error("The steps read each other in a circle.");
+    done.push(next); left.splice(left.indexOf(next), 1);
+  }
+  return done;
 }
 
 function form() {
   const names = chosen();
   if (!names.length) { show("data"); throw new Error("Choose at least one series on the first screen."); }
-  const processing = [];
-  steps.forEach((s) => {
-    const f = stepForm(s);
-    if (s.fields.input && s.fields.input.value.startsWith("@")) {
-      const earlier = steps.find((t) => String(t.id) === s.fields.input.value.slice(1) && t.kind === "trace");
-      if (earlier && earlier.givenName) f.input = earlier.givenName; else throw new Error(`Step ${s.id} (${s.algorithm}): the step it reads needs a name.`);
-    }
-    processing.push(f);
-  });
+  const processing = ordered().map(stepForm);
   drawMeta();
   const rows = [...document.querySelectorAll("#meta tbody tr")].map((tr) => {
     const row = {series: tr.dataset.series};
     [...tr.querySelectorAll("input")].forEach((i, k) => { if (i.value.trim() !== "") row[META[k]] = i.value.trim(); });
     return row;
   });
-  const out = {name: $("name").value.trim(), output: $("output").value.trim(), description: $("description").value.trim(), folder: $("folder").value.trim(),
+  const out = {name: $("name").value.trim() || $("name").placeholder, output: $("output").value.trim() || $("output").placeholder, description: $("description").value.trim(), folder: $("folder").value.trim(),
     registry: state.registry, sources: [{name: "raw", format: "idx", root: $("root").value.trim(), series: names, detector: $("detector").value}], steps: processing};
   if ($("usemeta").checked) out.metadata_rows = rows;
   return out;
 }
 
+// ---- 3. the files
+function suggestFiles() {
+  const n = chosen().length, d = $("detector").value || "processing";
+  $("name").placeholder = n === 1 ? chosen()[0] : `${d}-${n}series`.replace(/[^A-Za-z0-9_.-]/g, "-");
+  $("output").placeholder = `${state.output_root}/${$("name").value.trim() || $("name").placeholder}`;
+}
+
+async function run(kind) {
+  say("");
+  $("out").hidden = true;
+  try {
+    const result = await api("/api/" + kind, form());
+    if (kind === "preview") { $("out").textContent = result.text; $("out").hidden = false; say("This is what would be written.", "good"); return; }
+    const lines = [`Wrote ${result.definition}`].concat(result.metadata ? [`Wrote ${result.metadata}`] : []);
+    if (result.problem) { say(`Written, but the check says: ${result.problem}`, "bad"); } else { say(`Written. goldsluice check found ${result.files.length} raw file(s).`, "good"); }
+    $("out").textContent = lines.join("\n") + (result.problem ? "\n\n" + result.problem : "") + `\n\nNext:  python -m goldsluice run "${result.definition}"`;
+    $("out").hidden = false;
+  } catch (e) { say(e.message, "bad"); }
+}
+
+async function scan() {
+  $("scanmsg").textContent = ""; $("scanmsg").className = "muted";
+  try {
+    series = (await api("/api/scan?root=" + encodeURIComponent($("root").value.trim()))).series;
+    $("scanmsg").textContent = `${series.length} series, ${series.reduce((n, s) => n + s.dumps, 0)} dumps.`;
+    drawSeries();
+  } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
+}
 
 // ---- a new detector for the registry
+function nextName(name) { const m = /^(.*?)([A-Za-z0-9])$/.exec(name || ""); return m ? m[1] + (m[2] === "z" ? "a" : m[2] === "Z" ? "A" : m[2] === "9" ? "0" : String.fromCharCode(m[2].charCodeAt(0) + 1)) : "Ch1"; }
 function channelRow(values) {
   const v = values || {};
+  const rows = $("d-channels").querySelectorAll("tbody tr"), prev = rows.length ? rows[rows.length - 1].querySelectorAll("input") : null;
   const mk = (type, value, extra) => el("input", Object.assign({type, value: value === undefined ? "" : value}, extra || {}));
   const remove = el("button", {textContent: "×", type: "button", className: "link"});
-  const tr = el("tr", {}, el("td", {}, mk("text", v.name, {placeholder: "Side2pA"})), el("td", {}, mk("number", v.detector, {min: 0})), el("td", {}, mk("number", v.input, {min: 0})),
+  const tr = el("tr", {}, el("td", {}, mk("text", v.name, {placeholder: prev && prev[0].value ? nextName(prev[0].value) : "Side2pA"})),
+    el("td", {}, mk("number", v.detector, {min: 0, placeholder: prev && prev[1].value ? prev[1].value : "0"})),
+    el("td", {}, mk("number", v.input, {min: 0, placeholder: prev && prev[2].value !== "" ? String(Number(prev[2].value) + 1) : "0"})),
     el("td", {}, mk("text", v.role === undefined ? "phonon" : v.role, {placeholder: "phonon"})), el("td", {}, remove));
   remove.addEventListener("click", () => tr.remove());
   $("d-channels").querySelector("tbody").append(tr);
+}
+function suggestDetector() {
+  $("d-series").placeholder = chosen()[0] || "07221203_2025";
+  const rows = [...$("d-channels").querySelectorAll("tbody tr")];
+  rows.forEach((tr, k) => { if (k > 0) { const prev = rows[k - 1].querySelectorAll("input"), cur = tr.querySelectorAll("input");
+    if (prev[0].value) cur[0].placeholder = nextName(prev[0].value); if (prev[1].value) cur[1].placeholder = prev[1].value; if (prev[2].value !== "") cur[2].placeholder = String(Number(prev[2].value) + 1); } });
 }
 function drawNewDetector() {
   const sel = $("d-readout"); const keep = sel.value;
@@ -356,95 +593,6 @@ async function detectorRun(kind) {
   } catch (e) { msg.textContent = e.message; msg.className = "bad"; }
 }
 
-// ---- the flow diagram: raw data -> steps -> quantities (RQ) -> output files
-function channelsOf(s) {
-  const text = s.fields.channels.value.trim(), d = detector(), all = d ? d.channels : [];
-  if (text === "all") return all.map((c) => c.name);
-  if (text.startsWith("role:")) return all.filter((c) => c.role === text.slice(5)).map((c) => c.name);
-  return text.split(",").map((c) => c.trim()).filter(Boolean);
-}
-function wrap(text, width) {                        // break a long list into lines of about `width` characters
-  const lines = []; let line = "";
-  text.split(" ").forEach((w) => { if ((line + " " + w).trim().length > width) { lines.push(line); line = w; } else line = (line + " " + w).trim(); });
-  if (line) lines.push(line);
-  return lines;
-}
-function drawFlow() {
-  const root = $("flow-svg"); root.replaceChildren();
-  const names = chosen(), d = detector();
-  const dumps = series.filter((s) => names.includes(s.series)).reduce((n, s) => n + s.dumps, 0);
-  const nodes = [{id: "raw", kind: "raw", col: 0, title: d ? d.name : "no detector", lines: [`${names.length} series, ${dumps} dumps`, d ? d.channels.length + " channels" : "choose a detector"], tab: "data"}];
-  const edges = [], depth = {}, byName = {};
-  const clashes = new Set(), seen = {};
-  steps.forEach((s) => {
-    let from = "raw", col = 1, suffix = "", name = null;
-    if (s.fields.input && s.fields.input.value.startsWith("@")) { const e = steps.find((t) => String(t.id) === s.fields.input.value.slice(1)); if (e) { from = "s" + e.id; col = depth[e.id] + 1; } }
-    if (s.fields.suffix) suffix = s.fields.suffix.value.trim();
-    depth[s.id] = col;
-    const chans = channelsOf(s), trace = s.kind === "trace";
-    nodes.push({id: "s" + s.id, kind: trace ? "trace" : "step", col, title: `${s.id}. ${s.algorithm}`, lines: [trace ? "gives a filtered trace" : "on " + (chans.length ? chans.length + " channel" + (chans.length > 1 ? "s" : "") : "no channels")], tab: "steps", step: s});
-    edges.push([from, "s" + s.id]);
-    if (!trace) {
-      const outs = s.outputs.map((o) => o + suffix);
-      outs.forEach((o) => { chans.forEach((c) => { const key = c + "." + o; if (seen[key]) { clashes.add(seen[key]); clashes.add("o" + s.id); } else seen[key] = "o" + s.id; }); });
-      nodes.push({id: "o" + s.id, kind: "out", col: col + 1, title: "quantities", lines: wrap(outs.join(" "), 22), tab: "steps", step: s});
-      edges.push(["s" + s.id, "o" + s.id]);
-    }
-  });
-  const maxCol = Math.max(...nodes.map((n) => n.col)), files = maxCol + 1;
-  const outs = nodes.filter((n) => n.kind === "out");
-  nodes.push({id: "files", kind: "out", col: files, title: "output files", lines: ["Parquet, one record per channel", "(or RQ-style ROOT)"], tab: "files"});
-  outs.forEach((n) => edges.push([n.id, "files"]));
-  if (!steps.length) edges.push(["raw", "files"]);
-  const W = 190, GAP = 56, H = (n) => 30 + n.lines.length * 16, ROW = 14;
-  const cols = {}; nodes.forEach((n) => { (cols[n.col] = cols[n.col] || []).push(n); });
-  let height = 0;
-  Object.values(cols).forEach((list) => { let y = 14; list.forEach((n) => { n.y = y; n.h = H(n); y += n.h + ROW; }); height = Math.max(height, y); });
-  nodes.forEach((n) => { n.x = 12 + n.col * (W + GAP); });
-  const width = 12 + (files + 1) * (W + GAP) - GAP + 12;
-  root.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  const defs = svg("defs"), marker = svg("marker", {id: "arrow", viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse"});
-  marker.append(svg("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(marker); root.append(defs);
-  const index = Object.fromEntries(nodes.map((n) => [n.id, n]));
-  edges.forEach(([a, b]) => {
-    const p = index[a], q = index[b]; if (!p || !q) return;
-    const x1 = p.x + W, y1 = p.y + p.h / 2, x2 = q.x, y2 = q.y + q.h / 2, mid = (x1 + x2) / 2;
-    root.append(svg("path", {d: `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2 - 2},${y2}`, "marker-end": "url(#arrow)"}));
-  });
-  nodes.forEach((n) => {
-    const g = svg("g"); g.append(svg("rect", {x: n.x, y: n.y, width: W, height: n.h, rx: 7, class: `box ${n.kind}` + (clashes.has(n.id) ? " clash" : "")}));
-    g.append(svg("text", {x: n.x + 10, y: n.y + 20}, n.title));
-    n.lines.forEach((l, i) => g.append(svg("text", {x: n.x + 10, y: n.y + 38 + i * 16, class: "sub"}, l)));
-    g.addEventListener("click", () => { show(n.tab); if (n.step) n.step.box.scrollIntoView({block: "center"}); });
-    root.append(g);
-  });
-  $("flowmsg").textContent = clashes.size ? "Two steps give a quantity of the same name on the same channel: add a suffix to one of them (step 2, “What it reads”)." : "";
-  $("flowmsg").className = "muted bad";
-  $("t-flow").textContent = steps.length ? `${outs.length} output${outs.length === 1 ? "" : "s"}` : "what comes out";
-}
-
-async function run(kind) {
-  say("");
-  $("out").hidden = true;
-  try {
-    const result = await api("/api/" + kind, form());
-    if (kind === "preview") { $("out").textContent = result.text; $("out").hidden = false; say("This is what would be written.", "good"); return; }
-    const lines = [`Wrote ${result.definition}`].concat(result.metadata ? [`Wrote ${result.metadata}`] : []);
-    if (result.problem) { say(`Written, but the check says: ${result.problem}`, "bad"); } else { say(`Written. goldsluice check found ${result.files.length} raw file(s).`, "good"); }
-    $("out").textContent = lines.join("\n") + (result.problem ? "\n\n" + result.problem : "") + `\n\nNext:  python -m goldsluice run "${result.definition}"`;
-    $("out").hidden = false;
-  } catch (e) { say(e.message, "bad"); }
-}
-
-async function scan() {
-  $("scanmsg").textContent = ""; $("scanmsg").className = "muted";
-  try {
-    series = (await api("/api/scan?root=" + encodeURIComponent($("root").value.trim()))).series;
-    $("scanmsg").textContent = `${series.length} series, ${series.reduce((n, s) => n + s.dumps, 0)} dumps.`;
-    drawSeries();
-  } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
-}
-
 (async function start() {
   try {
     state = await api("/api/state");
@@ -457,16 +605,29 @@ async function scan() {
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => show(b.dataset.go)));
   $("scan").addEventListener("click", scan);
-  $("filter").addEventListener("input", applyFilter);
+  ["filter", "f-hvmin", "f-hvmax", "f-dur"].forEach((id) => $(id).addEventListener("input", applyFilter));
+  ["f-trigger", "f-type", "f-shield"].forEach((id) => $(id).addEventListener("change", applyFilter));
+  $("clearfilters").addEventListener("click", clearFilters);
   $("addstep").addEventListener("click", addStep);
-  $("detector").addEventListener("change", () => { showDetector(); });
+  $("detector").addEventListener("change", () => { showDetector(); drawGraph(); });
   $("all").addEventListener("change", (e) => { document.querySelectorAll("#series tbody tr:not([hidden]) input[type=checkbox]").forEach((c) => { c.checked = e.target.checked; }); summary(); });
+  $("graph").addEventListener("pointermove", onMove);
+  $("graph").addEventListener("pointerup", onUp);
+  $("graph").addEventListener("pointercancel", () => { drag = null; link = null; drawGraph(); });
+  document.addEventListener("keydown", (e) => {
+    if ((e.key === "Delete" || e.key === "Backspace") && !$("steps").hidden && selected !== null && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLSelectElement)) {
+      const rec = byId(selected); if (rec) removeStep(rec);
+    }
+  });
+  $("name").addEventListener("input", suggestFiles);
   $("d-readout").addEventListener("change", () => { $("d-newreadout").hidden = $("d-readout").value !== "@new"; });
-  $("d-addchannel").addEventListener("click", () => channelRow());
+  $("d-addchannel").addEventListener("click", () => { channelRow(); suggestDetector(); });
+  $("d-channels").addEventListener("input", suggestDetector);
   $("d-preview").addEventListener("click", () => detectorRun("preview"));
   $("d-add").addEventListener("click", () => detectorRun("add"));
   $("preview").addEventListener("click", () => run("preview"));
   $("write").addEventListener("click", () => run("write"));
+  drawGraph();
 })();
 </script>
 </body>

@@ -16,9 +16,17 @@ depends on it (NSDF-Data issue 162).
 python -m goldmap --registry ~/NSDF-Data/registry --series-list ~/NSDF-Data/data_analysis/R76/series_lists/nsdf_r76_series.csv --root C:/NSDF/idx --folder ~/survey
 ```
 
-The page opens in your browser (the address is also printed). Choose the folder of the dumps and the series, the detector (from the registry), add
-the steps (each algorithm asks for its parameters; the ones that belong to the readout are taken from it), check the metadata of each series, name the
-dataset and its output folder, then **Preview** or **Write the files and check them**. The last line it prints is the `goldsluice run` command.
+The page opens in your browser (the address is also printed). The page has three steps, one tab each:
+
+1. **Data:** the folder of the dumps and the series in it. Narrow them with filters on what is known about each series (HV range, trigger, type, source, length) and
+   choose all that are shown; pick the detector from the registry.
+2. **Steps:** the processing as boxes on a canvas. Add a step, drag it where you like, click it to set its parameters (the ones that belong to the readout are taken
+   from it). Drag from a filter's right-hand dot onto a step to make that step read the filtered trace (double-click the line to undo). The green boxes show the
+   quantities that end up in the output.
+3. **Files:** name the dataset and its output folder, check the metadata of each series, then **Preview** or **Write and check**. The last line it prints is the
+   `goldsluice run` command.
+
+In an empty box, **Tab** fills in the grey suggestion.
 
 | Option | |
 |---|---|

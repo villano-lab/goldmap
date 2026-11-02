@@ -5,6 +5,7 @@ the page carries a random token that every request must send back (`X-Goldmap-To
 server (a page on another site cannot read or guess either, which closes the usual ways a web page reaches a program on localhost).
 """
 import json
+import os
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -87,7 +88,8 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
                     facts = catalog.series_facts(config.series_list) if config.series_list else {}
                     return self._json(200, {"algorithms": catalog.algorithms(), "detectors": catalog.detectors(config.registries()),
                                             "readouts": catalog.readouts(config.registries()), "registry": config.registries(),
-                                            "targets": config.targets(), "roots": config.roots, "folder": config.folder, "facts": facts})
+                                            "targets": config.targets(), "roots": config.roots, "folder": config.folder, "facts": facts,
+                                            "output_root": os.environ.get("GOLDSLUICE_OUTPUT", "").strip() or "~/goldsluice-output"})
                 if url.path == "/api/scan":
                     root = parse_qs(url.query).get("root", [""])[0]
                     return self._json(200, {"series": catalog.scan(root)})
