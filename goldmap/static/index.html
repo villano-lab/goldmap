@@ -5,68 +5,104 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>goldmap</title>
 <style>
-  :root { --bg:#fbfaf6; --fg:#222; --muted:#6b6b63; --line:#d9d6c8; --card:#fff; --accent:#a8801a; --bad:#b3261e; --good:#2e7d32; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#1b1a17; --fg:#ece9de; --muted:#a09d90; --line:#3a382f; --card:#25231f; --accent:#d9b24c; --bad:#f2918a; --good:#7fcf84; } }
+  :root { --bg:#faf9f5; --fg:#222; --muted:#76746a; --line:#e3e0d3; --card:#fff; --accent:#a8801a; --accent-fg:#fff; --bad:#b3261e; --good:#2e7d32;
+          --raw:#dbe9f6; --step:#fbeecb; --trace:#e4dcf3; --out:#d9efd9; --edge:#9b9686; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1a17; --fg:#ece9de; --muted:#a09d90; --line:#3a382f; --card:#25231f; --accent:#d9b24c; --accent-fg:#1b1a17; --bad:#f2918a; --good:#7fcf84;
+          --raw:#243a52; --step:#4a3d17; --trace:#3a3052; --out:#254a2a; --edge:#7d7a6c; } }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, sans-serif; }
-  main { max-width:960px; margin:0 auto; padding:16px; }
-  h1 { font-size:1.4rem; margin:8px 0 0; } h1 span { color:var(--accent); }
-  p.lead { color:var(--muted); margin:2px 0 14px; }
-  section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:12px 0; }
-  h2 { font-size:1rem; margin:0 0 8px; } h2 b { color:var(--accent); }
-  label { display:block; font-size:.85rem; color:var(--muted); margin:6px 0 2px; }
-  input, select, textarea, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
-  input[type=text], input[type=number], select { width:100%; } input[type=checkbox] { width:auto; }
-  button { cursor:pointer; background:var(--card); } button.primary { background:var(--accent); color:#111; border-color:var(--accent); font-weight:600; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; } .row > * { flex:1 1 160px; } .row > button { flex:0 0 auto; }
-  table { border-collapse:collapse; width:100%; font-size:.88rem; } th, td { border-bottom:1px solid var(--line); padding:3px 6px; text-align:left; }
-  td input { padding:2px 4px; min-width:70px; } .scroll { max-height:340px; overflow:auto; }
-  .step { border:1px solid var(--line); border-radius:6px; padding:8px; margin:8px 0; } .step h3 { margin:0 0 4px; font-size:.95rem; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:20px 16px 60px; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:1.35rem; margin:0; font-weight:600; } h1 span { color:var(--accent); }
+  nav { display:flex; gap:4px; margin:14px 0 6px; border-bottom:1px solid var(--line); overflow-x:auto; }
+  nav button { border:0; border-bottom:2px solid transparent; background:none; padding:8px 14px; color:var(--muted); cursor:pointer; font:inherit; border-radius:0; white-space:nowrap; text-align:left; }
+  nav button[aria-current=true] { color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
+  nav small { display:block; font-weight:400; color:var(--muted); font-size:.74rem; }
+  .guide { color:var(--muted); margin:10px 0 4px; }
+  section[hidden] { display:none; }
+  label { display:block; font-size:.82rem; color:var(--muted); margin:12px 0 3px; }
+  input, select, button { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 9px; }
+  input[type=text], input[type=number], select { width:100%; } input[type=checkbox] { width:auto; accent-color:var(--accent); }
+  button { cursor:pointer; } button.primary { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); font-weight:600; }
+  button.link { border:0; background:none; color:var(--muted); padding:2px 4px; text-decoration:underline; font-size:.85rem; }
+  .row { display:flex; gap:8px; align-items:flex-end; } .row > :first-child { flex:1; }
+  .actions { display:flex; gap:8px; justify-content:space-between; margin-top:20px; } .actions > div { display:flex; gap:8px; }
+  table { border-collapse:collapse; width:100%; font-size:.88rem; } th { text-align:left; color:var(--muted); font-weight:500; font-size:.78rem; }
+  th, td { padding:4px 6px; border-bottom:1px solid var(--line); }
+  td input { padding:2px 4px; min-width:64px; width:100%; font-size:.85rem; }
+  .list { max-height:300px; overflow:auto; margin-top:8px; border:1px solid var(--line); border-radius:6px; background:var(--card); }
   .muted { color:var(--muted); font-size:.85rem; } .bad { color:var(--bad); } .good { color:var(--good); }
-  pre { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px; overflow:auto; font-size:.8rem; max-height:420px; }
+  .step { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:10px 0; }
+  .step header { align-items:center; } .step h3 { margin:0; font-size:.95rem; font-weight:600; } .step h3 small { font-weight:400; color:var(--muted); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0 12px; }
+  details { margin-top:10px; } summary { cursor:pointer; color:var(--muted); font-size:.85rem; }
+  pre { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; font-size:.78rem; max-height:360px; }
+  .hint { padding:18px 0; color:var(--muted); }
+  #flow { width:100%; height:auto; background:var(--card); border:1px solid var(--line); border-radius:8px; margin-top:8px; }
+  #flow .box { stroke:var(--edge); stroke-width:1; cursor:pointer; } #flow .box:hover { stroke:var(--accent); stroke-width:2; }
+  #flow .raw { fill:var(--raw); } #flow .step { fill:var(--step); } #flow .trace { fill:var(--trace); } #flow .out { fill:var(--out); } #flow .clash { stroke:var(--bad); stroke-width:2; }
+  #flow text { fill:var(--fg); font:13px system-ui, sans-serif; pointer-events:none; } #flow text.sub { fill:var(--muted); font-size:11px; }
+  #flow path { fill:none; stroke:var(--edge); stroke-width:1.5; } #flow marker path { fill:var(--edge); stroke:none; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:.8rem; color:var(--muted); margin-top:6px; } .legend i { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:5px; vertical-align:-1px; border:1px solid var(--edge); }
 </style>
 </head>
 <body>
 <main>
-  <h1><span>gold</span>map</h1>
-  <p class="lead">Lay out a goldsluice processing: choose the series, the detector and the steps, and get the definition file and the run metadata.</p>
+  <header><h1><span>gold</span>map</h1><span class="muted">lay out a processing, step by step</span></header>
+  <nav id="tabs">
+    <button data-tab="data" aria-current="true">1 · Data<small id="t-data">choose series</small></button>
+    <button data-tab="steps">2 · Steps<small id="t-steps">none yet</small></button>
+    <button data-tab="flow">3 · Flow<small id="t-flow">what comes out</small></button>
+    <button data-tab="files">4 · Files<small>name and write</small></button>
+  </nav>
 
-  <section>
-    <h2><b>1.</b> The raw data</h2>
-    <div class="row">
-      <div><label for="root">Folder of the dumps</label><input id="root" type="text" list="roots" autocomplete="off"><datalist id="roots"></datalist></div>
-      <button id="scan">Look for series</button>
-    </div>
+  <section id="data">
+    <p class="guide">Start with the raw data: which folder holds the dumps, which series to process, and which detector took them.</p>
+    <label for="root">Folder of the raw dumps</label>
+    <div class="row"><input id="root" type="text" list="roots" autocomplete="off"><datalist id="roots"></datalist><button id="scan">Look for series</button></div>
     <p class="muted" id="scanmsg"></p>
-    <div class="scroll"><table id="series"><thead><tr><th><input type="checkbox" id="all" title="all"></th><th>Series</th><th>Dumps</th><th>HV (V)</th><th>Trigger</th></tr></thead><tbody></tbody></table></div>
-  </section>
-
-  <section>
-    <h2><b>2.</b> The detector</h2>
-    <label for="detector">Detector (from the registry)</label><select id="detector"></select>
+    <div id="serieswrap" hidden>
+      <div class="row"><input id="filter" type="text" placeholder="Filter the series…"><label style="margin:0 0 6px"><input type="checkbox" id="all"> all shown</label></div>
+      <div class="list"><table id="series"><thead><tr><th></th><th>Series</th><th>Dumps</th><th>HV (V)</th><th>Trigger</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <label for="detector">Detector</label><select id="detector"></select>
     <p class="muted" id="detinfo"></p>
+    <div class="actions"><span></span><button class="primary" data-go="steps">Next: steps</button></div>
   </section>
 
-  <section>
-    <h2><b>3.</b> The processing steps</h2>
-    <div class="row"><div><label for="newalg">Add a step</label><select id="newalg"></select></div><button id="addstep">Add</button></div>
-    <div id="steps"></div>
+  <section id="steps" hidden>
+    <p class="guide">Add the processing, in order. Each step reads the raw trace and writes numbers (<em>quantities</em>), or filters the trace for a later step.</p>
+    <div class="row"><div><label for="newalg" style="margin-top:0">Add a step</label><select id="newalg"></select></div><button id="addstep">Add</button></div>
+    <div id="stepslist"><p class="hint" id="nosteps">No steps yet. Pick an algorithm above and press Add.</p></div>
+    <div class="actions"><button data-go="data">Back</button><button class="primary" data-go="flow">Next: see the flow</button></div>
   </section>
 
-  <section>
-    <h2><b>4.</b> Run metadata</h2>
-    <p class="muted">One row per chosen series, written to <code>series.csv</code> beside the definition. Filled from the series list when there is one; change what is wrong. Leave a column empty to skip it.</p>
-    <label><input type="checkbox" id="usemeta" checked> Write the metadata and refer to it from the definition</label>
-    <div class="scroll"><table id="meta"><thead><tr><th>Series</th><th>hv_v</th><th>trigger</th><th>trigger_value</th><th>type</th><th>source_shield</th><th>duration_min</th></tr></thead><tbody></tbody></table></div>
+  <section id="flow" hidden>
+    <p class="guide">What you have built: the raw data on the left, your steps in the middle, and the quantities that end up in the output files on the right. Click a box to edit it.</p>
+    <svg id="flow-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="legend"><span><i style="background:var(--raw)"></i>raw data</span><span><i style="background:var(--step)"></i>step that gives quantities</span><span><i style="background:var(--trace)"></i>filter (gives a trace)</span><span><i style="background:var(--out)"></i>output (RQ)</span></div>
+    <p class="muted" id="flowmsg"></p>
+    <div class="actions"><button data-go="steps">Back</button><button class="primary" data-go="files">Next: files</button></div>
   </section>
 
-  <section>
-    <h2><b>5.</b> The files</h2>
-    <div class="row"><div><label for="name">Name of the dataset</label><input id="name" type="text" placeholder="r76-82v"></div>
-    <div><label for="output">Output folder (where the processed quantities go)</label><input id="output" type="text" placeholder="C:/NSDF/goldsluice-output/r76-82v"></div></div>
-    <div class="row"><div><label for="folder">Write the definition and metadata into</label><input id="folder" type="text"></div></div>
-    <label for="description">Description (optional)</label><input id="description" type="text">
-    <p class="row"><button id="preview">Preview the definition</button><button id="write" class="primary">Write the files and check them</button></p>
+  <section id="files" hidden>
+    <p class="guide">Name the dataset, say where the results go, and write the definition (and the run metadata). goldsluice then checks that it finds the raw files.</p>
+    <div class="grid">
+      <div><label for="name">Name of the dataset</label><input id="name" type="text" placeholder="r76-82v"></div>
+      <div><label for="output">Where the results go</label><input id="output" type="text" placeholder="C:/NSDF/goldsluice-output/r76-82v"></div>
+    </div>
+    <details>
+      <summary>Run metadata (HV, trigger, …) per series</summary>
+      <label><input type="checkbox" id="usemeta" checked> Write it to <code>series.csv</code> and refer to it from the definition</label>
+      <div class="list"><table id="meta"><thead><tr><th>Series</th><th>hv_v</th><th>trigger</th><th>trigger_value</th><th>type</th><th>source_shield</th><th>duration_min</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted">Prefilled from the series list. Leave a column empty to leave it out.</p>
+    </details>
+    <details>
+      <summary>More</summary>
+      <label for="folder">Write the files into</label><input id="folder" type="text">
+      <label for="description">Description</label><input id="description" type="text">
+    </details>
+    <div class="actions"><button data-go="flow">Back</button><div><button id="preview">Preview</button><button id="write" class="primary">Write and check</button></div></div>
     <p id="msg"></p>
     <pre id="out" hidden></pre>
   </section>
@@ -79,6 +115,7 @@ let state = {algorithms: [], detectors: [], facts: {}, roots: [], registry: [], 
 let series = [];                                   // [{series, dumps, first, last}] of the last scan
 let steps = [];                                    // [{id, algorithm, kind, el, fields}]
 let stepCount = 0;
+const SVGNS = "http://www.w3.org/2000/svg";
 
 async function api(path, body) {
   const options = body === undefined ? {headers: {"X-Goldmap-Token": TOKEN}}
@@ -90,18 +127,38 @@ async function api(path, body) {
 }
 function say(text, kind) { const m = $("msg"); m.textContent = text; m.className = kind || ""; }
 function el(tag, props, ...kids) { const e = Object.assign(document.createElement(tag), props || {}); kids.forEach((k) => e.append(k)); return e; }
+function svg(tag, attrs, text) { const e = document.createElementNS(SVGNS, tag); Object.entries(attrs || {}).forEach(([k, v]) => e.setAttribute(k, v)); if (text !== undefined) e.textContent = text; return e; }
 const fmt = (v) => (v === null || v === undefined ? "" : v);
 
+function show(tab) {
+  ["data", "steps", "flow", "files"].forEach((t) => { $(t).hidden = t !== tab; });
+  document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-current", b.dataset.tab === tab));
+  if (tab === "flow") drawFlow();
+  if (tab === "files") drawMeta();
+}
+
 function chosen() { return [...document.querySelectorAll("#series tbody input[type=checkbox]:checked")].map((c) => c.dataset.series); }
+function summary() {
+  const n = chosen().length;
+  $("t-data").textContent = n ? `${n} series chosen` : "choose series";
+  $("t-steps").textContent = steps.length ? `${steps.length} step${steps.length > 1 ? "s" : ""}` : "none yet";
+}
 
 function drawSeries() {
   const body = $("series").querySelector("tbody"); body.replaceChildren();
   series.forEach((s) => {
     const f = state.facts[s.series] || {};
-    const box = el("input", {type: "checkbox"}); box.dataset.series = s.series; box.addEventListener("change", drawMeta);
-    body.append(el("tr", {}, el("td", {}, box), el("td", {textContent: s.series}), el("td", {textContent: s.dumps}), el("td", {textContent: fmt(f.hv_v)}), el("td", {textContent: fmt(f.trigger)})));
+    const box = el("input", {type: "checkbox"}); box.dataset.series = s.series; box.addEventListener("change", summary);
+    const tr = el("tr", {}, el("td", {}, box), el("td", {textContent: s.series}), el("td", {textContent: s.dumps}), el("td", {textContent: fmt(f.hv_v)}), el("td", {textContent: fmt(f.trigger)}));
+    tr.dataset.text = [s.series, f.hv_v, f.trigger].join(" ").toLowerCase();
+    body.append(tr);
   });
-  drawMeta();
+  $("serieswrap").hidden = !series.length;
+  summary();
+}
+function applyFilter() {
+  const q = $("filter").value.trim().toLowerCase();
+  document.querySelectorAll("#series tbody tr").forEach((tr) => { tr.hidden = q !== "" && !tr.dataset.text.includes(q); });
 }
 
 const META = ["hv_v", "trigger", "trigger_value", "type", "source_shield", "duration_min"];
@@ -117,6 +174,7 @@ function drawMeta() {
   });
 }
 
+function detector() { return state.detectors.find((x) => x.name === $("detector").value); }
 function drawDetectors() {
   const sel = $("detector"); sel.replaceChildren(el("option", {value: "", textContent: "(choose)"}));
   state.detectors.forEach((d) => sel.append(el("option", {value: d.name, textContent: d.name})));
@@ -124,44 +182,56 @@ function drawDetectors() {
   showDetector();
 }
 function showDetector() {
-  const d = state.detectors.find((x) => x.name === $("detector").value);
+  const d = detector();
   $("detinfo").textContent = !d ? (state.detectors.length ? "" : "No registry was given: start goldmap with --registry DIR.")
-    : `${d.description} Readout ${d.readout || "none"}; channels ${d.channels.map((c) => c.name + (c.role ? " (" + c.role + ")" : "")).join(", ") || "none"}; ${d.status}.`;
+    : `${d.description} Channels: ${d.channels.map((c) => c.name).join(", ") || "none"} · ${d.status}.`;
 }
 
 function addStep() {
   const alg = state.algorithms.find((a) => a.name === $("newalg").value);
   if (!alg) return;
+  $("nosteps").hidden = true;
   const box = el("div", {className: "step"});
-  const bar = el("div", {className: "row"});
-  const remove = el("button", {textContent: "Remove", type: "button"});
-  const record = {id: ++stepCount, algorithm: alg.name, kind: alg.kind, el: box, fields: {}};
-  bar.append(el("h3", {textContent: `${record.id}. ${alg.name}  ${alg.kind === "trace" ? "(gives a trace)" : "→ " + alg.outputs.join(", ")}`}), remove);
-  box.append(bar);
-  if (alg.summary) box.append(el("p", {className: "muted", textContent: alg.summary}));
+  const record = {id: ++stepCount, algorithm: alg.name, kind: alg.kind, outputs: alg.outputs, el: box, fields: {}};
+  const remove = el("button", {textContent: "Remove", type: "button", className: "link"});
+  const result = alg.kind === "trace" ? "gives a filtered trace" : alg.outputs.join(", ");
+  box.append(el("header", {className: "row"}, el("h3", {}, `${record.id}. ${alg.name} `, el("small", {textContent: "→ " + result})), remove));
+  if (alg.summary) box.append(el("p", {className: "muted", textContent: alg.summary, style: "margin:2px 0 0"}));
+  const grid = el("div", {className: "grid"});
   const ch = el("input", {type: "text", value: "role:phonon"}); record.fields.channels = ch;
-  box.append(el("label", {textContent: "Channels: all, role:<role>, or names separated by commas"}), ch);
+  grid.append(el("div", {}, el("label", {textContent: "Channels (all, role:…, or names)"}), ch));
+  const auto = [];
   alg.params.forEach((p) => {
     const input = el("input", {type: "number", step: "any"});
-    let mode = null;
-    if (p.readout) {
-      mode = el("select", {}, el("option", {value: "readout", textContent: "from the readout of the data"}), el("option", {value: "number", textContent: "a number"}));
-      mode.addEventListener("change", () => { input.hidden = mode.value === "readout"; }); input.hidden = true;
-    }
-    record.fields[p.name] = {input, mode};
-    box.append(el("label", {textContent: p.name}), ...(mode ? [mode] : []), input);
+    if (p.readout) { auto.push([p, input]); return; }
+    record.fields[p.name] = {input};
+    grid.append(el("div", {}, el("label", {textContent: p.name}), input));
   });
   if (alg.kind === "trace") {
     record.fields.name = el("input", {type: "text", placeholder: "lp"});
-    box.append(el("label", {textContent: "Name (later steps can take this trace as their input)"}), record.fields.name);
-  } else {
-    const input = el("select", {}, el("option", {value: "", textContent: "the raw trace"}));
-    steps.filter((s) => s.kind === "trace").forEach((s) => { input.append(el("option", {value: "@" + s.id, textContent: "result of step " + s.id + " (" + s.algorithm + ")"})); });
-    record.fields.input = input; record.fields.suffix = el("input", {type: "text", placeholder: "_lp (added to the quantity names)"});
-    box.append(el("label", {textContent: "Reads"}), input, el("label", {textContent: "Suffix of the quantity names"}), record.fields.suffix);
+    grid.append(el("div", {}, el("label", {textContent: "Name (later steps can read it)"}), record.fields.name));
   }
-  remove.addEventListener("click", () => { steps = steps.filter((s) => s !== record); box.remove(); });
-  steps.push(record); $("steps").append(box);
+  box.append(grid);
+  if (auto.length) {                                // the parameters that belong to the readout: taken from it unless set by hand
+    const more = el("details", {}, el("summary", {textContent: "Taken from the readout: " + auto.map(([p]) => p.name).join(", ")}));
+    auto.forEach(([p, input]) => {
+      const mode = el("select", {}, el("option", {value: "readout", textContent: "from the readout"}), el("option", {value: "number", textContent: "set by hand"}));
+      input.hidden = true; mode.addEventListener("change", () => { input.hidden = mode.value === "readout"; });
+      record.fields[p.name] = {input, mode};
+      more.append(el("label", {textContent: p.name}), mode, input);
+    });
+    box.append(more);
+  }
+  if (alg.kind !== "trace" && steps.some((s) => s.kind === "trace")) {
+    const input = el("select", {}, el("option", {value: "", textContent: "the raw trace"}));
+    steps.filter((s) => s.kind === "trace").forEach((s) => input.append(el("option", {value: "@" + s.id, textContent: `the result of step ${s.id} (${s.algorithm})`})));
+    record.fields.input = input; record.fields.suffix = el("input", {type: "text", placeholder: "_lp"});
+    box.append(el("details", {open: true}, el("summary", {textContent: "What it reads"}), el("label", {textContent: "Reads"}), input,
+      el("label", {textContent: "Suffix added to the quantity names (so they do not clash)"}), record.fields.suffix));
+  }
+  remove.addEventListener("click", () => { steps = steps.filter((s) => s !== record); box.remove(); $("nosteps").hidden = steps.length > 0; summary(); });
+  record.box = box;
+  steps.push(record); $("stepslist").append(box); summary();
 }
 
 function stepForm(s) {
@@ -170,7 +240,7 @@ function stepForm(s) {
   for (const [name, f] of Object.entries(s.fields)) {
     if (!f || !f.input) continue;
     if (f.mode && f.mode.value === "readout") { out.params[name] = "@readout." + name; continue; }
-    if (f.input.value === "") throw new Error(`step ${s.algorithm}: give a value for ${name}`);
+    if (f.input.value === "") throw new Error(`Step ${s.id} (${s.algorithm}): give a value for ${name}.`);
     out.params[name] = Number(f.input.value);
   }
   if (s.fields.name && s.fields.name.value) { out.name = s.fields.name.value.trim(); s.givenName = out.name; }
@@ -180,16 +250,17 @@ function stepForm(s) {
 
 function form() {
   const names = chosen();
-  if (!names.length) throw new Error("choose at least one series");
+  if (!names.length) { show("data"); throw new Error("Choose at least one series on the first screen."); }
   const processing = [];
   steps.forEach((s) => {
     const f = stepForm(s);
     if (s.fields.input && s.fields.input.value.startsWith("@")) {
       const earlier = steps.find((t) => String(t.id) === s.fields.input.value.slice(1) && t.kind === "trace");
-      if (earlier && earlier.givenName) f.input = earlier.givenName; else throw new Error(`step ${s.algorithm}: the step it reads needs a name`);
+      if (earlier && earlier.givenName) f.input = earlier.givenName; else throw new Error(`Step ${s.id} (${s.algorithm}): the step it reads needs a name.`);
     }
     processing.push(f);
   });
+  drawMeta();
   const rows = [...document.querySelectorAll("#meta tbody tr")].map((tr) => {
     const row = {series: tr.dataset.series};
     [...tr.querySelectorAll("input")].forEach((i, k) => { if (i.value.trim() !== "") row[META[k]] = i.value.trim(); });
@@ -201,6 +272,73 @@ function form() {
   return out;
 }
 
+// ---- the flow diagram: raw data -> steps -> quantities (RQ) -> output files
+function channelsOf(s) {
+  const text = s.fields.channels.value.trim(), d = detector(), all = d ? d.channels : [];
+  if (text === "all") return all.map((c) => c.name);
+  if (text.startsWith("role:")) return all.filter((c) => c.role === text.slice(5)).map((c) => c.name);
+  return text.split(",").map((c) => c.trim()).filter(Boolean);
+}
+function wrap(text, width) {                        // break a long list into lines of about `width` characters
+  const lines = []; let line = "";
+  text.split(" ").forEach((w) => { if ((line + " " + w).trim().length > width) { lines.push(line); line = w; } else line = (line + " " + w).trim(); });
+  if (line) lines.push(line);
+  return lines;
+}
+function drawFlow() {
+  const root = $("flow-svg"); root.replaceChildren();
+  const names = chosen(), d = detector();
+  const dumps = series.filter((s) => names.includes(s.series)).reduce((n, s) => n + s.dumps, 0);
+  const nodes = [{id: "raw", kind: "raw", col: 0, title: d ? d.name : "no detector", lines: [`${names.length} series, ${dumps} dumps`, d ? d.channels.length + " channels" : "choose a detector"], tab: "data"}];
+  const edges = [], depth = {}, byName = {};
+  const clashes = new Set(), seen = {};
+  steps.forEach((s) => {
+    let from = "raw", col = 1, suffix = "", name = null;
+    if (s.fields.input && s.fields.input.value.startsWith("@")) { const e = steps.find((t) => String(t.id) === s.fields.input.value.slice(1)); if (e) { from = "s" + e.id; col = depth[e.id] + 1; } }
+    if (s.fields.suffix) suffix = s.fields.suffix.value.trim();
+    depth[s.id] = col;
+    const chans = channelsOf(s), trace = s.kind === "trace";
+    nodes.push({id: "s" + s.id, kind: trace ? "trace" : "step", col, title: `${s.id}. ${s.algorithm}`, lines: [trace ? "gives a filtered trace" : "on " + (chans.length ? chans.length + " channel" + (chans.length > 1 ? "s" : "") : "no channels")], tab: "steps", step: s});
+    edges.push([from, "s" + s.id]);
+    if (!trace) {
+      const outs = s.outputs.map((o) => o + suffix);
+      outs.forEach((o) => { chans.forEach((c) => { const key = c + "." + o; if (seen[key]) { clashes.add(seen[key]); clashes.add("o" + s.id); } else seen[key] = "o" + s.id; }); });
+      nodes.push({id: "o" + s.id, kind: "out", col: col + 1, title: "quantities", lines: wrap(outs.join(" "), 22), tab: "steps", step: s});
+      edges.push(["s" + s.id, "o" + s.id]);
+    }
+  });
+  const maxCol = Math.max(...nodes.map((n) => n.col)), files = maxCol + 1;
+  const outs = nodes.filter((n) => n.kind === "out");
+  nodes.push({id: "files", kind: "out", col: files, title: "output files", lines: ["Parquet, one record per channel", "(or RQ-style ROOT)"], tab: "files"});
+  outs.forEach((n) => edges.push([n.id, "files"]));
+  if (!steps.length) edges.push(["raw", "files"]);
+  const W = 190, GAP = 56, H = (n) => 30 + n.lines.length * 16, ROW = 14;
+  const cols = {}; nodes.forEach((n) => { (cols[n.col] = cols[n.col] || []).push(n); });
+  let height = 0;
+  Object.values(cols).forEach((list) => { let y = 14; list.forEach((n) => { n.y = y; n.h = H(n); y += n.h + ROW; }); height = Math.max(height, y); });
+  nodes.forEach((n) => { n.x = 12 + n.col * (W + GAP); });
+  const width = 12 + (files + 1) * (W + GAP) - GAP + 12;
+  root.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const defs = svg("defs"), marker = svg("marker", {id: "arrow", viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse"});
+  marker.append(svg("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(marker); root.append(defs);
+  const index = Object.fromEntries(nodes.map((n) => [n.id, n]));
+  edges.forEach(([a, b]) => {
+    const p = index[a], q = index[b]; if (!p || !q) return;
+    const x1 = p.x + W, y1 = p.y + p.h / 2, x2 = q.x, y2 = q.y + q.h / 2, mid = (x1 + x2) / 2;
+    root.append(svg("path", {d: `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2 - 2},${y2}`, "marker-end": "url(#arrow)"}));
+  });
+  nodes.forEach((n) => {
+    const g = svg("g"); g.append(svg("rect", {x: n.x, y: n.y, width: W, height: n.h, rx: 7, class: `box ${n.kind}` + (clashes.has(n.id) ? " clash" : "")}));
+    g.append(svg("text", {x: n.x + 10, y: n.y + 20}, n.title));
+    n.lines.forEach((l, i) => g.append(svg("text", {x: n.x + 10, y: n.y + 38 + i * 16, class: "sub"}, l)));
+    g.addEventListener("click", () => { show(n.tab); if (n.step) n.step.box.scrollIntoView({block: "center"}); });
+    root.append(g);
+  });
+  $("flowmsg").textContent = clashes.size ? "Two steps give a quantity of the same name on the same channel: add a suffix to one of them (step 2, “What it reads”)." : "";
+  $("flowmsg").className = "muted bad";
+  $("t-flow").textContent = steps.length ? `${outs.length} output${outs.length === 1 ? "" : "s"}` : "what comes out";
+}
+
 async function run(kind) {
   say("");
   $("out").hidden = true;
@@ -209,14 +347,13 @@ async function run(kind) {
     if (kind === "preview") { $("out").textContent = result.text; $("out").hidden = false; say("This is what would be written.", "good"); return; }
     const lines = [`Wrote ${result.definition}`].concat(result.metadata ? [`Wrote ${result.metadata}`] : []);
     if (result.problem) { say(`Written, but the check says: ${result.problem}`, "bad"); } else { say(`Written. goldsluice check found ${result.files.length} raw file(s).`, "good"); }
-    $("out").textContent = lines.join("\n") + (result.files.length ? "\n\n" + result.files.slice(0, 40).join("\n") + (result.files.length > 40 ? "\n..." : "") : "")
-      + (result.problem ? "\n\n" + result.problem : "") + `\n\nNext:  python -m goldsluice run "${result.definition}"`;
+    $("out").textContent = lines.join("\n") + (result.problem ? "\n\n" + result.problem : "") + `\n\nNext:  python -m goldsluice run "${result.definition}"`;
     $("out").hidden = false;
   } catch (e) { say(e.message, "bad"); }
 }
 
 async function scan() {
-  $("scanmsg").textContent = "";
+  $("scanmsg").textContent = ""; $("scanmsg").className = "muted";
   try {
     series = (await api("/api/scan?root=" + encodeURIComponent($("root").value.trim()))).series;
     $("scanmsg").textContent = `${series.length} series, ${series.reduce((n, s) => n + s.dumps, 0)} dumps.`;
@@ -229,14 +366,17 @@ async function scan() {
     state = await api("/api/state");
     $("roots").replaceChildren(...state.roots.map((r) => el("option", {value: r})));
     $("root").value = state.roots[0] || ""; $("folder").value = state.folder;
-    $("newalg").replaceChildren(...state.algorithms.map((a) => el("option", {value: a.name, textContent: a.name})));
+    $("newalg").replaceChildren(...state.algorithms.map((a) => el("option", {value: a.name, textContent: `${a.name} — ${a.kind === "trace" ? "filter" : a.outputs.join(", ")}`})));
     drawDetectors();
     if ($("root").value) scan();
-  } catch (e) { say(e.message, "bad"); }
+  } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
+  document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
+  document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => show(b.dataset.go)));
   $("scan").addEventListener("click", scan);
+  $("filter").addEventListener("input", applyFilter);
   $("addstep").addEventListener("click", addStep);
-  $("detector").addEventListener("change", showDetector);
-  $("all").addEventListener("change", (e) => { document.querySelectorAll("#series tbody input[type=checkbox]").forEach((c) => { c.checked = e.target.checked; }); drawMeta(); });
+  $("detector").addEventListener("change", () => { showDetector(); });
+  $("all").addEventListener("change", (e) => { document.querySelectorAll("#series tbody tr:not([hidden]) input[type=checkbox]").forEach((c) => { c.checked = e.target.checked; }); summary(); });
   $("preview").addEventListener("click", () => run("preview"));
   $("write").addEventListener("click", () => run("write"));
 })();
