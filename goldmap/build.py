@@ -36,7 +36,7 @@ def _registry_path(folder: Path, registry: str, absolute: bool = False) -> str:
         relative = _posix(os.path.relpath(given, folder))
     except ValueError:                                                  # another drive (Windows)
         return _posix(given)
-    return relative if relative.count("../") <= 3 else _posix(given)     # a path that climbs far up is clearer written in full
+    return relative if relative.count("../") <= 1 else _posix(given)     # a path that climbs far up is clearer written in full
 
 
 def _source(form_source: dict, index: int) -> dict:
