@@ -28,6 +28,12 @@ dataset and its output folder, then **Preview** or **Write the files and check t
 | `--folder DIR` | where the definition and the metadata are written (default: the current folder) |
 | `--port N` | the port on 127.0.0.1 (default: any free one) |
 
+## A detector that is not in the registry
+
+The **+ Detector** tab describes a new detector (name, number, readout, channel map, and the evidence for each) and adds it to a registry folder with
+`goldpan.registry.add_record`, which checks it exactly as the reader does and does not touch the rest of the file. Without `--registry` the record goes to a
+`registry` folder inside `--folder`. The page only writes to the registry folders it was started with. To share a detector, add it to the NSDF-Data registry through a pull request.
+
 ## Safety
 
 The app reads folders and writes files for whoever can talk to it, so it listens on `127.0.0.1` only, and answers only the page it served: the page

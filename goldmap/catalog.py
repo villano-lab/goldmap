@@ -78,3 +78,10 @@ def series_facts(path) -> dict:
                             "type": (r.get("type") or "").strip() or None, "source_shield": (r.get("source_shield") or "").strip() or None,
                             "duration_min": _number(r.get("duration_min"))}
     return out
+
+
+def readouts(folders=()) -> list:
+    """The readouts of the registry made of `folders`: ``{"name", "pretrigger_samples", "glitch_samples", "sample_period_s", "status"}``, by name."""
+    from goldpan import registry
+    reg = registry.load(*[Path(f).expanduser() for f in folders])
+    return [{"name": name, **dataclasses.asdict(rec.config), "status": rec.status} for name, rec in sorted(reg.readouts().items())]
