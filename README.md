@@ -20,6 +20,9 @@ The page opens in your browser (the address is also printed). The page has three
 
 1. **Data:** the folder of the dumps and the series in it. Narrow them with filters on what is known about each series (HV range, trigger, type, source, length) and
    choose all that are shown; pick the detector from the registry.
+   **Registries:** under the detector box, a checkbox per registry folder (the ones given with `--registry`) says which are in use. Only the detectors and readouts of the
+   ticked folders are offered, and the definition names only those. A registry that a source's detector comes from cannot be switched off until that source uses
+   another detector.
    **Several sources:** raw data from different detectors (or different folders) are separate *sources*. **+ Add a source** gives each its own folder, series, filters and
    detector (the chips above the folder box switch between them). All the registry folders you started goldmap with are merged, so the detectors of
    two registries can be used in one processing. The steps apply to every source: `role:phonon` means each detector's own phonon channels, and a box on the

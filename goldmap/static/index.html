@@ -68,6 +68,7 @@
   .chip { border:1px solid var(--line); border-radius:16px; padding:3px 12px; background:var(--card); cursor:pointer; font-size:.85rem; }
   .chip[aria-current=true] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); font-weight:600; } .chip.add { color:var(--muted); border-style:dashed; }
   .chip .x { margin-left:4px; color:var(--muted); } .chip .x:hover { color:var(--bad); }
+  #registries label.check { display:flex; gap:8px; align-items:center; margin:4px 0; font-size:.88rem; color:var(--fg); } #registries .muted { margin-left:auto; }
 </style>
 </head>
 <body>
@@ -101,6 +102,10 @@
     </div>
     <label for="detector">Detector</label><select id="detector"></select>
     <p class="muted" id="detinfo"></p>
+    <details id="regbox"><summary id="regsummary">Registries</summary>
+      <div id="registries"></div>
+      <p class="muted" id="regmsg">The detectors and readouts come from the folders that are ticked, and the definition names only those. Several registries are merged; a name may be defined once.</p>
+    </details>
     <p class="muted"><button class="link" data-go="newdet">The detector is not listed? Add it to the registry</button></p>
     <div class="actions"><span></span><button class="primary" data-go="steps">Next: steps</button></div>
   </section>
@@ -187,6 +192,7 @@ function newSource() {
 }
 sources = [newSource()]; cur = sources[0];
 let steps = [];                                    // [{id, algorithm, kind, outputs, x, y, input, fields, box}]
+let regOn = new Set();                              // the registry folders that are ticked
 let stepCount = 0, selected = null, notice = "";           // `notice`: a message for the diagram, shown once
 const SVGNS = "http://www.w3.org/2000/svg";
 
@@ -329,19 +335,42 @@ function drawMeta() {
   });
 }
 
-function detector() { return state.detectors.find((x) => x.name === $("detector").value); }
-function detectorOf(src) { return state.detectors.find((x) => x.name === src.detector) || null; }
+function liveDetectors() { return state.detectors.filter((d) => !d.registry || regOn.has(d.registry)); }         // those of the ticked registries
+function liveReadouts() { return state.readouts.filter((r) => !r.registry || regOn.has(r.registry)); }
+function liveTargets() { return state.targets.filter((t) => regOn.has(t) || !state.registry.includes(t)); }
+function detector() { return liveDetectors().find((x) => x.name === $("detector").value); }
+function detectorOf(src) { return liveDetectors().find((x) => x.name === src.detector) || null; }
+function drawRegistries() {
+  const box = $("registries"); box.replaceChildren();
+  state.registry.forEach((f) => {
+    const n = state.detectors.filter((d) => d.registry === f).length, m = state.readouts.filter((r) => r.registry === f).length;
+    const cb = el("input", {type: "checkbox", checked: regOn.has(f)});
+    cb.addEventListener("change", () => toggleRegistry(f, cb));
+    box.append(el("label", {className: "check"}, cb, el("span", {textContent: f}), el("span", {className: "muted", textContent: `${n} detector${n === 1 ? "" : "s"}, ${m} readout${m === 1 ? "" : "s"}`})));
+  });
+  $("regsummary").textContent = state.registry.length ? `Registries: ${[...regOn].length} of ${state.registry.length} ticked` : "Registries: none given";
+  $("regbox").open = $("regbox").open || state.registry.length > 1;
+}
+function toggleRegistry(folder, cb) {
+  if (!cb.checked) {                                  // a registry that a source depends on cannot be switched off
+    const user = sources.find((src) => { const d = state.detectors.find((x) => x.name === src.detector); return d && d.registry === folder; });
+    if (user) { cb.checked = true; $("regmsg").textContent = `Source ${sources.indexOf(user) + 1} uses ${user.detector} from this registry: choose another detector there first.`; $("regmsg").className = "muted bad"; return; }
+    regOn.delete(folder);
+  } else regOn.add(folder);
+  $("regmsg").className = "muted"; $("regmsg").textContent = "The detectors and readouts come from the folders that are ticked, and the definition names only those. Several registries are merged; a name may be defined once.";
+  drawRegistries(); drawDetectors(cur.detector); drawNewDetector(); summary(); drawGraph();
+}
 const baseName = (p) => (p || "").split("/").pop().split(String.fromCharCode(92)).pop();
 function drawDetectors(value) {
   const sel = $("detector"), want = value !== undefined ? value : cur.detector;
   sel.replaceChildren(el("option", {value: "", textContent: "(choose)"}));
-  state.detectors.forEach((d) => sel.append(el("option", {value: d.name, textContent: d.name})));
-  sel.value = want && [...sel.options].some((o) => o.value === want) ? want : (state.detectors.length === 1 ? state.detectors[0].name : "");
+  liveDetectors().forEach((d) => sel.append(el("option", {value: d.name, textContent: d.name})));
+  sel.value = want && [...sel.options].some((o) => o.value === want) ? want : (liveDetectors().length === 1 ? liveDetectors()[0].name : "");
   cur.detector = sel.value; showDetector();
 }
 function showDetector() {
   const d = detector();
-  $("detinfo").textContent = !d ? (state.detectors.length ? "" : "No registry was given: start goldmap with --registry DIR, or add a detector with the + Detector tab.")
+  $("detinfo").textContent = !d ? (liveDetectors().length ? "" : "No registry was given: start goldmap with --registry DIR, or add a detector with the + Detector tab.")
     : `${d.description} Channels: ${d.channels.map((c) => c.name).join(", ") || "none"} · ${d.status} · from ${baseName(d.origin)}.`;
 }
 
@@ -472,8 +501,8 @@ function drawGraph() {
   steps.forEach((s) => { s.heading.textContent = ` ${pos[s.id]}. ${s.algorithm} `; });
   const nodes = sources.map((src, i) => {                                   // one box of raw data per source
     const d = detectorOf(src), dumps = src.series.filter((s) => src.picked.has(s.series)).reduce((n, s) => n + s.dumps, 0);
-    return {id: "raw" + src.id, kind: "raw", x: RAW_X, y: 14 + i * 84, w: W, source: src, fixed: true, title: d ? d.name : "no detector",
-      lines: [`${src.picked.size} series, ${dumps} dumps`, d ? `${d.channels.length} channels · ${baseName(d.origin)}` : "choose a detector"]};
+    return {id: "raw" + src.id, kind: "raw", x: RAW_X, y: 14 + i * 84, w: W, source: src, fixed: true, title: d ? d.name : (src.detector || "no detector"),
+      lines: [`${src.picked.size} series, ${dumps} dumps`, d ? `${d.channels.length} channels · ${baseName(d.origin)}` : (src.detector ? "⚠ its registry is switched off" : "choose a detector")]};
   });
   const rawIds = nodes.map((n) => n.id);
   const edges = [], clashes = new Set(), seen = {};
@@ -625,7 +654,7 @@ function form() {
     return row;
   });
   const out = {name: $("name").value.trim() || $("name").placeholder, output: $("output").value.trim() || $("output").placeholder, description: $("description").value.trim(), folder: $("folder").value.trim(),
-    registry: state.registry, sources: sources.map((src) => ({name: src.name, format: "idx", root: src.root, series: chosenOf(src), detector: src.detector})), steps: processing};
+    registry: state.registry.filter((f) => regOn.has(f)), sources: sources.map((src) => ({name: src.name, format: "idx", root: src.root, series: chosenOf(src), detector: src.detector})), steps: processing};
   if ($("usemeta").checked) out.metadata_rows = rows;
   return out;
 }
@@ -690,11 +719,11 @@ function suggestDetector() {
 }
 function drawNewDetector() {
   const sel = $("d-readout"); const keep = sel.value;
-  sel.replaceChildren(el("option", {value: "", textContent: "(none)"}), ...state.readouts.map((r) => el("option", {value: r.name, textContent: `${r.name} (${r.pretrigger_samples} pre, ${r.sample_period_s} s)`})),
+  sel.replaceChildren(el("option", {value: "", textContent: "(none)"}), ...liveReadouts().map((r) => el("option", {value: r.name, textContent: `${r.name} (${r.pretrigger_samples} pre, ${r.sample_period_s} s)`})),
     el("option", {value: "@new", textContent: "a new readout…"}));
-  sel.value = keep && [...sel.options].some((o) => o.value === keep) ? keep : (state.readouts.length ? state.readouts[0].name : "@new");
+  sel.value = keep && [...sel.options].some((o) => o.value === keep) ? keep : (liveReadouts().length ? liveReadouts()[0].name : "@new");
   $("d-newreadout").hidden = sel.value !== "@new";
-  $("d-target").replaceChildren(...state.targets.map((t) => el("option", {value: t, textContent: t})));
+  $("d-target").replaceChildren(...liveTargets().map((t) => el("option", {value: t, textContent: t})));
   if (!$("d-channels").querySelector("tbody tr")) channelRow();
 }
 function detectorForm() {
@@ -716,7 +745,7 @@ async function detectorRun(kind) {
       $("d-out").textContent = r.text; $("d-out").hidden = false; msg.textContent = "This is what would be added to the registry."; msg.className = "good"; return;
     }
     const r = await api("/api/detector/add", form);
-    state = await api("/api/state"); drawDetectors(form.name); drawNewDetector(); summary(); drawGraph();
+    state = await api("/api/state"); state.registry.forEach((f) => { if (!regOn.has(f) && f === form.target) regOn.add(f); }); drawRegistries(); drawDetectors(form.name); drawNewDetector(); summary(); drawGraph();
     msg.textContent = "Added: " + r.files.join(", "); msg.className = "good";
     show("data");
   } catch (e) { msg.textContent = e.message; msg.className = "bad"; }
@@ -728,6 +757,7 @@ async function detectorRun(kind) {
     $("roots").replaceChildren(...state.roots.map((r) => el("option", {value: r})));
     cur.root = state.roots[0] || ""; $("root").value = cur.root; $("folder").value = state.folder;
     buildPicker();
+    regOn = new Set(state.registry); drawRegistries();
     drawDetectors(); drawNewDetector(); drawSourceBar();
     if ($("root").value) scan();
   } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }

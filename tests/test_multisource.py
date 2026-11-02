@@ -46,3 +46,14 @@ def test_the_same_source_name_twice_is_refused(tmp_path, idx, two_detectors):
                     {"name": "raw", "format": "idx", "root": str(idx), "series": ["07221112_0943"], "detector": "TEST-B"}]
     with pytest.raises(ValueError, match="unique"):
         build.write(f, tmp_path / "work")
+
+
+def test_detectors_and_readouts_say_which_registry_folder_they_are_in(tmp_path, registry):
+    from goldpan import registry as r
+    extra = tmp_path / "extra"
+    r.add_record(extra, "detectors", "TEST-C", {"readout": "DCRC_RUN76", "status": "inferred", "evidence": "a test detector in a second registry folder"})
+    folders = [str(extra), str(registry)]
+    by_name = {d["name"]: d for d in catalog.detectors(folders)}
+    assert by_name["TEST-C"]["registry"] == str(extra) and by_name["NAI-S2"]["registry"] == str(registry)
+    assert {x["registry"] for x in catalog.readouts(folders)} == {str(registry)}
+    assert catalog.detectors([]) == []

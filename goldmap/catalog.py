@@ -26,6 +26,15 @@ def algorithms() -> list:
     return out
 
 
+def _folder_of(origin, folders) -> str:
+    """The one of `folders` (as given) that the file `origin` is in, or ``""``."""
+    here = Path(origin).resolve().parent
+    for f in folders:
+        if Path(f).expanduser().resolve() == here:
+            return str(f)
+    return ""
+
+
 def detectors(folders=()) -> list:
     """The detectors of the registry made of `folders` (and `GOLDPAN_REGISTRY`): ``{"name", "number", "readout", "status", "description",
     "channels": [{"name", "role"}], "readout_record"}``, by name. `channels` are those of the idx defaults."""
@@ -37,7 +46,7 @@ def detectors(folders=()) -> list:
         roles = idx.get("roles", {})
         readout = dataclasses.asdict(reg.readout(rec.readout)) if rec.readout and reg.has_readout(rec.readout) else None
         out.append({"name": name, "number": rec.number, "readout": rec.readout, "status": rec.status, "description": rec.description,
-                    "channels": [{"name": c, "role": roles.get(c, "")} for c in idx.get("channels", {})], "readout_record": readout, "origin": rec.origin})
+                    "channels": [{"name": c, "role": roles.get(c, "")} for c in idx.get("channels", {})], "readout_record": readout, "origin": rec.origin, "registry": _folder_of(rec.origin, folders)})
     return out
 
 
@@ -84,4 +93,5 @@ def readouts(folders=()) -> list:
     """The readouts of the registry made of `folders`: ``{"name", "pretrigger_samples", "glitch_samples", "sample_period_s", "status"}``, by name."""
     from goldpan import registry
     reg = registry.load(*[Path(f).expanduser() for f in folders])
-    return [{"name": name, **dataclasses.asdict(rec.config), "status": rec.status} for name, rec in sorted(reg.readouts().items())]
+    return [{"name": name, **dataclasses.asdict(rec.config), "status": rec.status, "origin": rec.origin, "registry": _folder_of(rec.origin, folders)}
+            for name, rec in sorted(reg.readouts().items())]
