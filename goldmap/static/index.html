@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>goldmap</title>
+<style>
+  :root { --bg:#fbfaf6; --fg:#222; --muted:#6b6b63; --line:#d9d6c8; --card:#fff; --accent:#a8801a; --bad:#b3261e; --good:#2e7d32; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1a17; --fg:#ece9de; --muted:#a09d90; --line:#3a382f; --card:#25231f; --accent:#d9b24c; --bad:#f2918a; --good:#7fcf84; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:16px; }
+  h1 { font-size:1.4rem; margin:8px 0 0; } h1 span { color:var(--accent); }
+  p.lead { color:var(--muted); margin:2px 0 14px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:12px 0; }
+  h2 { font-size:1rem; margin:0 0 8px; } h2 b { color:var(--accent); }
+  label { display:block; font-size:.85rem; color:var(--muted); margin:6px 0 2px; }
+  input, select, textarea, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+  input[type=text], input[type=number], select { width:100%; } input[type=checkbox] { width:auto; }
+  button { cursor:pointer; background:var(--card); } button.primary { background:var(--accent); color:#111; border-color:var(--accent); font-weight:600; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; } .row > * { flex:1 1 160px; } .row > button { flex:0 0 auto; }
+  table { border-collapse:collapse; width:100%; font-size:.88rem; } th, td { border-bottom:1px solid var(--line); padding:3px 6px; text-align:left; }
+  td input { padding:2px 4px; min-width:70px; } .scroll { max-height:340px; overflow:auto; }
+  .step { border:1px solid var(--line); border-radius:6px; padding:8px; margin:8px 0; } .step h3 { margin:0 0 4px; font-size:.95rem; }
+  .muted { color:var(--muted); font-size:.85rem; } .bad { color:var(--bad); } .good { color:var(--good); }
+  pre { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px; overflow:auto; font-size:.8rem; max-height:420px; }
+</style>
+</head>
+<body>
+<main>
+  <h1><span>gold</span>map</h1>
+  <p class="lead">Lay out a goldsluice processing: choose the series, the detector and the steps, and get the definition file and the run metadata.</p>
+
+  <section>
+    <h2><b>1.</b> The raw data</h2>
+    <div class="row">
+      <div><label for="root">Folder of the dumps</label><input id="root" type="text" list="roots" autocomplete="off"><datalist id="roots"></datalist></div>
+      <button id="scan">Look for series</button>
+    </div>
+    <p class="muted" id="scanmsg"></p>
+    <div class="scroll"><table id="series"><thead><tr><th><input type="checkbox" id="all" title="all"></th><th>Series</th><th>Dumps</th><th>HV (V)</th><th>Trigger</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2><b>2.</b> The detector</h2>
+    <label for="detector">Detector (from the registry)</label><select id="detector"></select>
+    <p class="muted" id="detinfo"></p>
+  </section>
+
+  <section>
+    <h2><b>3.</b> The processing steps</h2>
+    <div class="row"><div><label for="newalg">Add a step</label><select id="newalg"></select></div><button id="addstep">Add</button></div>
+    <div id="steps"></div>
+  </section>
+
+  <section>
+    <h2><b>4.</b> Run metadata</h2>
+    <p class="muted">One row per chosen series, written to <code>series.csv</code> beside the definition. Filled from the series list when there is one; change what is wrong. Leave a column empty to skip it.</p>
+    <label><input type="checkbox" id="usemeta" checked> Write the metadata and refer to it from the definition</label>
+    <div class="scroll"><table id="meta"><thead><tr><th>Series</th><th>hv_v</th><th>trigger</th><th>trigger_value</th><th>type</th><th>source_shield</th><th>duration_min</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2><b>5.</b> The files</h2>
+    <div class="row"><div><label for="name">Name of the dataset</label><input id="name" type="text" placeholder="r76-82v"></div>
+    <div><label for="output">Output folder (where the processed quantities go)</label><input id="output" type="text" placeholder="C:/NSDF/goldsluice-output/r76-82v"></div></div>
+    <div class="row"><div><label for="folder">Write the definition and metadata into</label><input id="folder" type="text"></div></div>
+    <label for="description">Description (optional)</label><input id="description" type="text">
+    <p class="row"><button id="preview">Preview the definition</button><button id="write" class="primary">Write the files and check them</button></p>
+    <p id="msg"></p>
+    <pre id="out" hidden></pre>
+  </section>
+</main>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = (id) => document.getElementById(id);
+let state = {algorithms: [], detectors: [], facts: {}, roots: [], registry: [], folder: ""};
+let series = [];                                   // [{series, dumps, first, last}] of the last scan
+let steps = [];                                    // [{id, algorithm, kind, el, fields}]
+let stepCount = 0;
+
+async function api(path, body) {
+  const options = body === undefined ? {headers: {"X-Goldmap-Token": TOKEN}}
+    : {method: "POST", headers: {"X-Goldmap-Token": TOKEN, "Content-Type": "application/json"}, body: JSON.stringify(body)};
+  const r = await fetch(path, options);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function say(text, kind) { const m = $("msg"); m.textContent = text; m.className = kind || ""; }
+function el(tag, props, ...kids) { const e = Object.assign(document.createElement(tag), props || {}); kids.forEach((k) => e.append(k)); return e; }
+const fmt = (v) => (v === null || v === undefined ? "" : v);
+
+function chosen() { return [...document.querySelectorAll("#series tbody input[type=checkbox]:checked")].map((c) => c.dataset.series); }
+
+function drawSeries() {
+  const body = $("series").querySelector("tbody"); body.replaceChildren();
+  series.forEach((s) => {
+    const f = state.facts[s.series] || {};
+    const box = el("input", {type: "checkbox"}); box.dataset.series = s.series; box.addEventListener("change", drawMeta);
+    body.append(el("tr", {}, el("td", {}, box), el("td", {textContent: s.series}), el("td", {textContent: s.dumps}), el("td", {textContent: fmt(f.hv_v)}), el("td", {textContent: fmt(f.trigger)})));
+  });
+  drawMeta();
+}
+
+const META = ["hv_v", "trigger", "trigger_value", "type", "source_shield", "duration_min"];
+function drawMeta() {
+  const keep = {};
+  document.querySelectorAll("#meta tbody tr").forEach((tr) => { keep[tr.dataset.series] = [...tr.querySelectorAll("input")].map((i) => i.value); });
+  const body = $("meta").querySelector("tbody"); body.replaceChildren();
+  chosen().forEach((name) => {
+    const f = state.facts[name] || {};
+    const tr = el("tr"); tr.dataset.series = name; tr.append(el("td", {textContent: name}));
+    META.forEach((c, i) => tr.append(el("td", {}, el("input", {type: "text", value: keep[name] ? keep[name][i] : fmt(f[c])}))));
+    body.append(tr);
+  });
+}
+
+function drawDetectors() {
+  const sel = $("detector"); sel.replaceChildren(el("option", {value: "", textContent: "(choose)"}));
+  state.detectors.forEach((d) => sel.append(el("option", {value: d.name, textContent: d.name})));
+  if (state.detectors.length === 1) sel.value = state.detectors[0].name;
+  showDetector();
+}
+function showDetector() {
+  const d = state.detectors.find((x) => x.name === $("detector").value);
+  $("detinfo").textContent = !d ? (state.detectors.length ? "" : "No registry was given: start goldmap with --registry DIR.")
+    : `${d.description} Readout ${d.readout || "none"}; channels ${d.channels.map((c) => c.name + (c.role ? " (" + c.role + ")" : "")).join(", ") || "none"}; ${d.status}.`;
+}
+
+function addStep() {
+  const alg = state.algorithms.find((a) => a.name === $("newalg").value);
+  if (!alg) return;
+  const box = el("div", {className: "step"});
+  const bar = el("div", {className: "row"});
+  const remove = el("button", {textContent: "Remove", type: "button"});
+  const record = {id: ++stepCount, algorithm: alg.name, kind: alg.kind, el: box, fields: {}};
+  bar.append(el("h3", {textContent: `${record.id}. ${alg.name}  ${alg.kind === "trace" ? "(gives a trace)" : "→ " + alg.outputs.join(", ")}`}), remove);
+  box.append(bar);
+  if (alg.summary) box.append(el("p", {className: "muted", textContent: alg.summary}));
+  const ch = el("input", {type: "text", value: "role:phonon"}); record.fields.channels = ch;
+  box.append(el("label", {textContent: "Channels: all, role:<role>, or names separated by commas"}), ch);
+  alg.params.forEach((p) => {
+    const input = el("input", {type: "number", step: "any"});
+    let mode = null;
+    if (p.readout) {
+      mode = el("select", {}, el("option", {value: "readout", textContent: "from the readout of the data"}), el("option", {value: "number", textContent: "a number"}));
+      mode.addEventListener("change", () => { input.hidden = mode.value === "readout"; }); input.hidden = true;
+    }
+    record.fields[p.name] = {input, mode};
+    box.append(el("label", {textContent: p.name}), ...(mode ? [mode] : []), input);
+  });
+  if (alg.kind === "trace") {
+    record.fields.name = el("input", {type: "text", placeholder: "lp"});
+    box.append(el("label", {textContent: "Name (later steps can take this trace as their input)"}), record.fields.name);
+  } else {
+    const input = el("select", {}, el("option", {value: "", textContent: "the raw trace"}));
+    steps.filter((s) => s.kind === "trace").forEach((s) => { input.append(el("option", {value: "@" + s.id, textContent: "result of step " + s.id + " (" + s.algorithm + ")"})); });
+    record.fields.input = input; record.fields.suffix = el("input", {type: "text", placeholder: "_lp (added to the quantity names)"});
+    box.append(el("label", {textContent: "Reads"}), input, el("label", {textContent: "Suffix of the quantity names"}), record.fields.suffix);
+  }
+  remove.addEventListener("click", () => { steps = steps.filter((s) => s !== record); box.remove(); });
+  steps.push(record); $("steps").append(box);
+}
+
+function stepForm(s) {
+  const channels = s.fields.channels.value.trim();
+  const out = {algorithm: s.algorithm, channels: channels.includes(",") ? channels.split(",").map((c) => c.trim()).filter(Boolean) : channels, params: {}};
+  for (const [name, f] of Object.entries(s.fields)) {
+    if (!f || !f.input) continue;
+    if (f.mode && f.mode.value === "readout") { out.params[name] = "@readout." + name; continue; }
+    if (f.input.value === "") throw new Error(`step ${s.algorithm}: give a value for ${name}`);
+    out.params[name] = Number(f.input.value);
+  }
+  if (s.fields.name && s.fields.name.value) { out.name = s.fields.name.value.trim(); s.givenName = out.name; }
+  if (s.fields.suffix && s.fields.suffix.value) out.suffix = s.fields.suffix.value.trim();
+  return out;
+}
+
+function form() {
+  const names = chosen();
+  if (!names.length) throw new Error("choose at least one series");
+  const processing = [];
+  steps.forEach((s) => {
+    const f = stepForm(s);
+    if (s.fields.input && s.fields.input.value.startsWith("@")) {
+      const earlier = steps.find((t) => String(t.id) === s.fields.input.value.slice(1) && t.kind === "trace");
+      if (earlier && earlier.givenName) f.input = earlier.givenName; else throw new Error(`step ${s.algorithm}: the step it reads needs a name`);
+    }
+    processing.push(f);
+  });
+  const rows = [...document.querySelectorAll("#meta tbody tr")].map((tr) => {
+    const row = {series: tr.dataset.series};
+    [...tr.querySelectorAll("input")].forEach((i, k) => { if (i.value.trim() !== "") row[META[k]] = i.value.trim(); });
+    return row;
+  });
+  const out = {name: $("name").value.trim(), output: $("output").value.trim(), description: $("description").value.trim(), folder: $("folder").value.trim(),
+    registry: state.registry, sources: [{name: "raw", format: "idx", root: $("root").value.trim(), series: names, detector: $("detector").value}], steps: processing};
+  if ($("usemeta").checked) out.metadata_rows = rows;
+  return out;
+}
+
+async function run(kind) {
+  say("");
+  $("out").hidden = true;
+  try {
+    const result = await api("/api/" + kind, form());
+    if (kind === "preview") { $("out").textContent = result.text; $("out").hidden = false; say("This is what would be written.", "good"); return; }
+    const lines = [`Wrote ${result.definition}`].concat(result.metadata ? [`Wrote ${result.metadata}`] : []);
+    if (result.problem) { say(`Written, but the check says: ${result.problem}`, "bad"); } else { say(`Written. goldsluice check found ${result.files.length} raw file(s).`, "good"); }
+    $("out").textContent = lines.join("\n") + (result.files.length ? "\n\n" + result.files.slice(0, 40).join("\n") + (result.files.length > 40 ? "\n..." : "") : "")
+      + (result.problem ? "\n\n" + result.problem : "") + `\n\nNext:  python -m goldsluice run "${result.definition}"`;
+    $("out").hidden = false;
+  } catch (e) { say(e.message, "bad"); }
+}
+
+async function scan() {
+  $("scanmsg").textContent = "";
+  try {
+    series = (await api("/api/scan?root=" + encodeURIComponent($("root").value.trim()))).series;
+    $("scanmsg").textContent = `${series.length} series, ${series.reduce((n, s) => n + s.dumps, 0)} dumps.`;
+    drawSeries();
+  } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
+}
+
+(async function start() {
+  try {
+    state = await api("/api/state");
+    $("roots").replaceChildren(...state.roots.map((r) => el("option", {value: r})));
+    $("root").value = state.roots[0] || ""; $("folder").value = state.folder;
+    $("newalg").replaceChildren(...state.algorithms.map((a) => el("option", {value: a.name, textContent: a.name})));
+    drawDetectors();
+    if ($("root").value) scan();
+  } catch (e) { say(e.message, "bad"); }
+  $("scan").addEventListener("click", scan);
+  $("addstep").addEventListener("click", addStep);
+  $("detector").addEventListener("change", showDetector);
+  $("all").addEventListener("change", (e) => { document.querySelectorAll("#series tbody input[type=checkbox]").forEach((c) => { c.checked = e.target.checked; }); drawMeta(); });
+  $("preview").addEventListener("click", () => run("preview"));
+  $("write").addEventListener("click", () => run("write"));
+})();
+</script>
+</body>
+</html>

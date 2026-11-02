@@ -1,0 +1,29 @@
+# goldmap: a local browser app that makes everything a goldsluice processing needs (the dataset definition file and the run-metadata CSV).
+# It sits on top of goldpan and goldsluice and nothing in them depends on it (NSDF-Data issue 162).
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "goldmap"
+version = "0.1.0"
+description = "A local browser app that makes the dataset definition and the run metadata for a goldsluice processing."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = ["goldpan>=0.2.0", "goldsluice"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+goldmap = "goldmap.__main__:main"
+
+[tool.setuptools]
+packages = ["goldmap"]
+
+[tool.setuptools.package-data]
+goldmap = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
