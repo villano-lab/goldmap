@@ -40,3 +40,7 @@ python -m pytest
 ```
 
 The tests use the registry folder of the NSDF-Data checkout that goldpan was installed from, and skip without it.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

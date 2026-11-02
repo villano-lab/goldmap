@@ -10,6 +10,7 @@ version = "0.1.0"
 description = "A local browser app that makes the dataset definition and the run metadata for a goldsluice processing."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = ["goldpan>=0.2.0", "goldsluice"]
 
