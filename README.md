@@ -20,6 +20,11 @@ The page opens in your browser (the address is also printed). The page has three
 
 1. **Data:** the folder of the dumps and the series in it. Narrow them with filters on what is known about each series (HV range, trigger, type, source, length) and
    choose all that are shown; pick the detector from the registry.
+   **Several sources:** raw data from different detectors (or different folders) are separate *sources*. **+ Add a source** gives each its own folder, series, filters and
+   detector (the chips above the folder box switch between them). All the registry folders you started goldmap with are merged, so the detectors of
+   two registries can be used in one processing. The steps apply to every source: `role:phonon` means each detector's own phonon channels, and a box on the
+   diagram warns when a detector has none. The definition is written with one `[[sources]]` per source. Not possible in one definition: different steps for
+   different detectors (make two definitions) and ROOT output for several detectors.
 2. **Steps:** the processing as boxes on a canvas. Add a step, drag it where you like, click it to set its parameters (the ones that belong to the readout are taken
    from it). Drag from a filter's right-hand dot onto a step to make that step read the filtered trace (double-click the line to undo). The green boxes show the
    quantities that end up in the output.

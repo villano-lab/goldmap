@@ -37,7 +37,7 @@ def detectors(folders=()) -> list:
         roles = idx.get("roles", {})
         readout = dataclasses.asdict(reg.readout(rec.readout)) if rec.readout and reg.has_readout(rec.readout) else None
         out.append({"name": name, "number": rec.number, "readout": rec.readout, "status": rec.status, "description": rec.description,
-                    "channels": [{"name": c, "role": roles.get(c, "")} for c in idx.get("channels", {})], "readout_record": readout})
+                    "channels": [{"name": c, "role": roles.get(c, "")} for c in idx.get("channels", {})], "readout_record": readout, "origin": rec.origin})
     return out
 
 

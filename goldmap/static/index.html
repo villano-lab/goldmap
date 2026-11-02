@@ -64,6 +64,10 @@
   #picklist .opt .muted { margin-left:auto; text-align:right; }
   #graph circle.badge { fill:var(--accent); stroke:var(--card); stroke-width:2; } #graph text.badgetext { fill:var(--accent-fg); font:700 12px system-ui, sans-serif; text-anchor:middle; }
   #graph text.tagtext { fill:var(--fg); font:700 10px system-ui, sans-serif; letter-spacing:.06em; opacity:.7; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 2px; }
+  .chip { border:1px solid var(--line); border-radius:16px; padding:3px 12px; background:var(--card); cursor:pointer; font-size:.85rem; }
+  .chip[aria-current=true] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); font-weight:600; } .chip.add { color:var(--muted); border-style:dashed; }
+  .chip .x { margin-left:4px; color:var(--muted); } .chip .x:hover { color:var(--bad); }
 </style>
 </head>
 <body>
@@ -77,7 +81,8 @@
   </nav>
 
   <section id="data">
-    <p class="guide">Start with the raw data: which folder holds the dumps, which series to process, and which detector took them. Tip: in an empty box, press Tab to fill in the grey suggestion.</p>
+    <p class="guide">Start with the raw data: which folder holds the dumps, which series to process, and which detector took them. Raw data from different detectors (or different folders) are separate sources: add one with <em>+ Add a source</em>; the steps then run on all of them. Tip: in an empty box, press Tab to fill in the grey suggestion.</p>
+    <div id="sourcebar" class="chips"></div>
     <label for="root">Folder of the raw dumps</label>
     <div class="row"><input id="root" type="text" list="roots" autocomplete="off"><datalist id="roots"></datalist><button id="scan">Look for series</button></div>
     <p class="muted" id="scanmsg"></p>
@@ -174,7 +179,13 @@
 const TOKEN = "__TOKEN__";
 const $ = (id) => document.getElementById(id);
 let state = {algorithms: [], detectors: [], readouts: [], targets: [], facts: {}, roots: [], registry: [], folder: "", output_root: "~/goldsluice-output"};
-let series = [];                                   // [{series, dumps, first, last}] of the last scan
+let sources = [], cur = null, sourceCount = 0;       // the raw data: every source has its own folder, series and detector; `cur` is the one shown on the Data tab
+function newSource() {
+  sourceCount += 1;
+  return {id: sourceCount, name: sourceCount === 1 ? "raw" : "raw" + sourceCount, root: "", series: [], picked: new Set(), detector: "",
+    filters: {text: "", hvmin: "", hvmax: "", trigger: "", type: "", shield: "", dur: ""}};      // series: [{series, dumps, first, last}] of its last scan
+}
+sources = [newSource()]; cur = sources[0];
 let steps = [];                                    // [{id, algorithm, kind, outputs, x, y, input, fields, box}]
 let stepCount = 0, selected = null, notice = "";           // `notice`: a message for the diagram, shown once
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -212,16 +223,52 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ---- 1. the data: the series, with filters on what is known about them
-function chosen() { return [...document.querySelectorAll("#series tbody input[type=checkbox]:checked")].map((c) => c.dataset.series); }
+function chosenOf(src) { return [...src.picked].sort(); }
+function chosen() { return [...new Set(sources.flatMap(chosenOf))].sort(); }               // every series chosen, in any source
 function summary() {
   const n = chosen().length;
-  $("t-data").textContent = n ? `${n} series chosen` : "choose series";
+  $("t-data").textContent = n ? `${n} series chosen${sources.length > 1 ? ` in ${sources.length} sources` : ""}` : "choose series";
   $("t-steps").textContent = steps.length ? `${steps.length} step${steps.length > 1 ? "s" : ""}` : "build the processing";
-  showCount();
+  showCount(); drawSourceBar();
 }
 function showCount() {
   const rows = [...document.querySelectorAll("#series tbody tr")];
-  $("shown").textContent = `${rows.filter((r) => !r.hidden).length} of ${rows.length} shown, ${chosen().length} chosen`;
+  $("shown").textContent = `${rows.filter((r) => !r.hidden).length} of ${rows.length} shown, ${cur.picked.size} chosen here`;
+}
+function saveSource() {                                // what is on the Data tab -> the current source
+  cur.root = $("root").value.trim(); cur.detector = $("detector").value;
+  cur.filters = {text: $("filter").value, hvmin: $("f-hvmin").value, hvmax: $("f-hvmax").value, trigger: $("f-trigger").value, type: $("f-type").value, shield: $("f-shield").value, dur: $("f-dur").value};
+}
+function loadSource(src) {                             // a source -> the Data tab
+  cur = src;
+  $("root").value = src.root; $("scanmsg").className = "muted";
+  $("scanmsg").textContent = src.series.length ? `${src.series.length} series, ${src.series.reduce((n, s) => n + s.dumps, 0)} dumps.` : "";
+  drawSeries();
+  const f = src.filters;
+  $("filter").value = f.text; $("f-hvmin").value = f.hvmin; $("f-hvmax").value = f.hvmax; $("f-dur").value = f.dur;
+  $("f-trigger").value = f.trigger; $("f-type").value = f.type; $("f-shield").value = f.shield;
+  applyFilter(); drawDetectors(src.detector); summary(); drawGraph();
+}
+function switchSource(src) { if (src !== cur) { saveSource(); loadSource(src); } }
+function addSource() { saveSource(); const s = newSource(); s.root = cur.root; sources.push(s); loadSource(s); if (s.root) scan(); }
+function removeSource(src) {
+  if (sources.length === 1) return;
+  const wasCurrent = src === cur; sources = sources.filter((x) => x !== src);
+  if (wasCurrent) loadSource(sources[0]); else { summary(); drawGraph(); }
+}
+function drawSourceBar() {
+  const bar = $("sourcebar"); bar.replaceChildren();
+  sources.forEach((src, i) => {
+    const chip = el("button", {type: "button", className: "chip", textContent: `${i + 1}. ${src.detector || "no detector"} · ${src.picked.size} series`});
+    chip.setAttribute("aria-current", String(src === cur));
+    if (sources.length > 1) {
+      const x = el("span", {className: "x", textContent: "×", title: "remove this source"});
+      x.addEventListener("click", (e) => { e.stopPropagation(); removeSource(src); }); chip.append(" ", x);
+    }
+    chip.addEventListener("click", () => switchSource(src));
+    bar.append(chip);
+  });
+  bar.append(el("button", {type: "button", className: "chip add", textContent: "+ Add a source", onclick: addSource}));
 }
 function fillSelect(id, values, label) {
   const sel = $(id), keep = sel.value;
@@ -230,19 +277,20 @@ function fillSelect(id, values, label) {
 }
 function drawSeries() {
   const body = $("series").querySelector("tbody"); body.replaceChildren();
-  series.forEach((s) => {
+  cur.series.forEach((s) => {
     const f = state.facts[s.series] || {};
-    const box = el("input", {type: "checkbox"}); box.dataset.series = s.series; box.addEventListener("change", summary);
+    const box = el("input", {type: "checkbox", checked: cur.picked.has(s.series)}); box.dataset.series = s.series;
+    box.addEventListener("change", () => { if (box.checked) cur.picked.add(s.series); else cur.picked.delete(s.series); summary(); });
     const tr = el("tr", {}, el("td", {}, box), el("td", {textContent: s.series}), el("td", {textContent: s.dumps}), el("td", {textContent: fmt(f.hv_v)}), el("td", {textContent: fmt(f.trigger)}),
       el("td", {textContent: fmt(f.type)}), el("td", {textContent: fmt(f.duration_min)}));
     tr.dataset.series = s.series; tr.dataset.text = [s.series, f.hv_v, f.trigger, f.type, f.source_shield].join(" ").toLowerCase();
     body.append(tr);
   });
-  const facts = series.map((s) => state.facts[s.series] || {});
+  const facts = cur.series.map((s) => state.facts[s.series] || {});
   fillSelect("f-trigger", facts.map((f) => f.trigger), "any trigger");
   fillSelect("f-type", facts.map((f) => f.type), "any type");
   fillSelect("f-shield", facts.map((f) => f.source_shield), "any source");
-  $("serieswrap").hidden = !series.length;
+  $("serieswrap").hidden = !cur.series.length;
   applyFilter(); summary();
 }
 function passes(s, f) {                              // does the series with facts `f` pass the filters?
@@ -282,17 +330,19 @@ function drawMeta() {
 }
 
 function detector() { return state.detectors.find((x) => x.name === $("detector").value); }
-function drawDetectors() {
-  const sel = $("detector"); const keep = sel.value;
+function detectorOf(src) { return state.detectors.find((x) => x.name === src.detector) || null; }
+const baseName = (p) => (p || "").split("/").pop().split(String.fromCharCode(92)).pop();
+function drawDetectors(value) {
+  const sel = $("detector"), want = value !== undefined ? value : cur.detector;
   sel.replaceChildren(el("option", {value: "", textContent: "(choose)"}));
   state.detectors.forEach((d) => sel.append(el("option", {value: d.name, textContent: d.name})));
-  sel.value = keep && [...sel.options].some((o) => o.value === keep) ? keep : (state.detectors.length === 1 ? state.detectors[0].name : "");
-  showDetector();
+  sel.value = want && [...sel.options].some((o) => o.value === want) ? want : (state.detectors.length === 1 ? state.detectors[0].name : "");
+  cur.detector = sel.value; showDetector();
 }
 function showDetector() {
   const d = detector();
   $("detinfo").textContent = !d ? (state.detectors.length ? "" : "No registry was given: start goldmap with --registry DIR, or add a detector with the + Detector tab.")
-    : `${d.description} Channels: ${d.channels.map((c) => c.name).join(", ") || "none"} · ${d.status}.`;
+    : `${d.description} Channels: ${d.channels.map((c) => c.name).join(", ") || "none"} · ${d.status} · from ${baseName(d.origin)}.`;
 }
 
 // ---- 2. the steps: boxes on a canvas
@@ -329,11 +379,12 @@ function reaches(from, to) {                         // does the chain of inputs
   for (let s = from, n = 0; s && n < 100; s = byId(s.input), n++) { if (s === to) return true; }
   return false;
 }
-function channelsOf(s) {
-  const text = s.fields.channels.value.trim(), d = detector(), all = d ? d.channels : [];
-  if (text === "all") return all.map((c) => c.name);
-  if (text.startsWith("role:")) return all.filter((c) => c.role === text.slice(5)).map((c) => c.name);
-  return text.split(",").map((c) => c.trim()).filter(Boolean);
+function channelsFor(s, d) {                           // the channels step `s` works on for detector `d`, and the named ones `d` does not have
+  const text = s.fields.channels.value.trim(), all = d ? d.channels : [];
+  if (text === "all") return {names: all.map((c) => c.name), missing: []};
+  if (text.startsWith("role:")) return {names: all.filter((c) => c.role === text.slice(5)).map((c) => c.name), missing: []};
+  const names = text.split(",").map((c) => c.trim()).filter(Boolean);
+  return {names, missing: d ? names.filter((n) => !all.some((c) => c.name === n)) : []};
 }
 function wrap(text, width) {                         // break a long list into lines of about `width` characters
   const lines = []; let line = "";
@@ -419,18 +470,31 @@ function drawGraph() {
   const root = $("graph"); root.replaceChildren();
   pos = positions();
   steps.forEach((s) => { s.heading.textContent = ` ${pos[s.id]}. ${s.algorithm} `; });
-  const names = chosen(), d = detector();
-  const dumps = series.filter((s) => names.includes(s.series)).reduce((n, s) => n + s.dumps, 0);
-  const nodes = [{id: "raw", kind: "raw", x: RAW_X, y: 14, w: W, lines: [`${names.length} series, ${dumps} dumps`, d ? d.channels.length + " channels" : "choose a detector"], title: d ? d.name : "no detector", fixed: true, tab: "data"}];
+  const nodes = sources.map((src, i) => {                                   // one box of raw data per source
+    const d = detectorOf(src), dumps = src.series.filter((s) => src.picked.has(s.series)).reduce((n, s) => n + s.dumps, 0);
+    return {id: "raw" + src.id, kind: "raw", x: RAW_X, y: 14 + i * 84, w: W, source: src, fixed: true, title: d ? d.name : "no detector",
+      lines: [`${src.picked.size} series, ${dumps} dumps`, d ? `${d.channels.length} channels · ${baseName(d.origin)}` : "choose a detector"]};
+  });
+  const rawIds = nodes.map((n) => n.id);
   const edges = [], clashes = new Set(), seen = {};
   steps.forEach((s) => {
-    const chans = channelsOf(s), trace = isTrace(s);
-    nodes.push({id: "s" + s.id, kind: trace ? "trace" : "step", x: s.x, y: s.y, w: W, title: s.algorithm, step: s,
-      lines: [trace ? `filter · ${chans.length} channel${chans.length === 1 ? "" : "s"}` : `${chans.length} channel${chans.length === 1 ? "" : "s"}`]});
-    edges.push([s.input === null ? "raw" : "s" + s.input, "s" + s.id, s]);
+    const trace = isTrace(s), per = sources.map((src) => ({src, d: detectorOf(src), c: channelsFor(s, detectorOf(src))}));
+    const counts = per.filter((p) => p.d).map((p) => p.c.names.length);                    // a source without a detector yet has no channels to count
+    if (!counts.length) counts.push(0);
+    const unit = counts.length === 1 && counts[0] === 1 ? "channel" : "channels";
+    const lines = [(trace ? "filter · " : "") + counts.join(" + ") + " " + unit];
+    per.forEach((p) => {
+      if (p.d && p.c.names.length === 0) lines.push(`⚠ no such channel in ${p.d.name}`);
+      else if (p.c.missing.length) lines.push(`⚠ ${p.d.name} has no ${p.c.missing.join(", ")}`);
+    });
+    nodes.push({id: "s" + s.id, kind: trace ? "trace" : "step", x: s.x, y: s.y, w: W, title: s.algorithm, step: s, lines});
+    if (s.input === null) rawIds.forEach((id) => edges.push([id, "s" + s.id, s])); else edges.push(["s" + s.input, "s" + s.id, s]);
     if (!trace) {
       const outs = s.outputs.map((o) => o + suffixOf(s));
-      outs.forEach((o) => chans.forEach((c) => { const key = c + "." + o; if (seen[key]) { clashes.add(seen[key]); clashes.add("o" + s.id); } else seen[key] = "o" + s.id; }));
+      per.forEach((p) => outs.forEach((o) => p.c.names.forEach((c) => {                    // two steps clash only on the same channel of the same detector
+        const key = (p.d ? p.d.name : "?") + "|" + c + "." + o;
+        if (seen[key]) { clashes.add(seen[key]); clashes.add("o" + s.id); } else seen[key] = "o" + s.id;
+      })));
       nodes.push({id: "o" + s.id, kind: "out", x: s.x + W + OUT_GAP, y: s.y, w: W, title: "quantities", lines: wrap(outs.join(" "), 22), fixed: true, step: s});
       edges.push(["s" + s.id, "o" + s.id]);
     }
@@ -438,8 +502,8 @@ function drawGraph() {
   const outs = nodes.filter((n) => n.kind === "out");
   nodes.push({id: "files", kind: "out", x: FILES_X, y: 14, w: W, title: "output files", lines: ["Parquet, one record per channel", "(or RQ-style ROOT)"], fixed: true, tab: "files"});
   outs.forEach((n) => edges.push([n.id, "files"]));
-  if (!steps.length) edges.push(["raw", "files"]);
-  nodes.forEach((n) => { n.h = n.kind === "out" || n.kind === "raw" ? 30 + n.lines.length * 16 : STEP_H; });
+  if (!steps.length) rawIds.forEach((id) => edges.push([id, "files"]));
+  nodes.forEach((n) => { n.h = n.kind === "out" || n.kind === "raw" ? 30 + n.lines.length * 16 : Math.max(STEP_H, 34 + n.lines.length * 16); });
   const scale = canvas.clientWidth / VIEW_W;
   const height = Math.max(canvas.clientHeight / scale, ...nodes.map((n) => n.y + n.h + 24));       // fills the canvas, grows with what is on it
   root.setAttribute("viewBox", `0 0 ${VIEW_W} ${height}`);
@@ -470,7 +534,7 @@ function drawGraph() {
       if (isTrace(s)) { const out = svg("circle", {cx: n.x + n.w, cy, r: 6, class: "port out"}); out.addEventListener("pointerdown", (e) => startLink(e, s)); g.append(out); }
       g.addEventListener("pointerdown", (e) => { if (!e.target.classList.contains("out")) startDrag(e, s); });
     } else if (n.fixed) {
-      g.addEventListener("click", () => { if (n.tab) show(n.tab); else if (n.step) selectStep(n.step.id); });
+      g.addEventListener("click", () => { if (n.source) { show("data"); switchSource(n.source); } else if (n.tab) show(n.tab); else if (n.step) selectStep(n.step.id); });
     }
     root.append(g);
   });
@@ -546,8 +610,13 @@ let pos = {};                                         // step id -> its place in
 function positions() { const m = {}; try { ordered().forEach((s, i) => { m[s.id] = i + 1; }); } catch (e) { /* a circle cannot be made: setInput refuses it */ } return m; }
 
 function form() {
+  saveSource();
   const names = chosen();
   if (!names.length) { show("data"); throw new Error("Choose at least one series on the first screen."); }
+  const used = {};
+  sources.forEach((src) => chosenOf(src).forEach((s) => { if (used[s]) throw new Error(`The series ${s} is chosen in two sources (${used[s]} and ${src.name}).`); used[s] = src.name; }));
+  const none = sources.findIndex((src) => !src.picked.size);
+  if (none >= 0) { show("data"); switchSource(sources[none]); throw new Error(`Source ${none + 1} has no series chosen: choose some, or remove the source.`); }
   const processing = ordered().map(stepForm);
   drawMeta();
   const rows = [...document.querySelectorAll("#meta tbody tr")].map((tr) => {
@@ -556,14 +625,14 @@ function form() {
     return row;
   });
   const out = {name: $("name").value.trim() || $("name").placeholder, output: $("output").value.trim() || $("output").placeholder, description: $("description").value.trim(), folder: $("folder").value.trim(),
-    registry: state.registry, sources: [{name: "raw", format: "idx", root: $("root").value.trim(), series: names, detector: $("detector").value}], steps: processing};
+    registry: state.registry, sources: sources.map((src) => ({name: src.name, format: "idx", root: src.root, series: chosenOf(src), detector: src.detector})), steps: processing};
   if ($("usemeta").checked) out.metadata_rows = rows;
   return out;
 }
 
 // ---- 3. the files
 function suggestFiles() {
-  const n = chosen().length, d = $("detector").value || "processing";
+  const n = chosen().length, d = [...new Set(sources.map((s) => s.detector).filter(Boolean))].join("+") || "processing";
   $("name").placeholder = n === 1 ? chosen()[0] : `${d}-${n}series`.replace(/[^A-Za-z0-9_.-]/g, "-");
   $("output").placeholder = `${state.output_root}/${$("name").value.trim() || $("name").placeholder}`;
 }
@@ -589,8 +658,12 @@ async function run(kind) {
 async function scan() {
   $("scanmsg").textContent = ""; $("scanmsg").className = "muted";
   try {
-    series = (await api("/api/scan?root=" + encodeURIComponent($("root").value.trim()))).series;
-    $("scanmsg").textContent = `${series.length} series, ${series.reduce((n, s) => n + s.dumps, 0)} dumps.`;
+    const src = cur;
+    src.root = $("root").value.trim();
+    src.series = (await api("/api/scan?root=" + encodeURIComponent(src.root))).series;
+    src.picked = new Set([...src.picked].filter((name) => src.series.some((s) => s.series === name)));
+    if (src !== cur) return;                                                         // another source was opened meanwhile
+    $("scanmsg").textContent = `${src.series.length} series, ${src.series.reduce((n, s) => n + s.dumps, 0)} dumps.`;
     drawSeries();
   } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
 }
@@ -643,7 +716,7 @@ async function detectorRun(kind) {
       $("d-out").textContent = r.text; $("d-out").hidden = false; msg.textContent = "This is what would be added to the registry."; msg.className = "good"; return;
     }
     const r = await api("/api/detector/add", form);
-    state = await api("/api/state"); drawDetectors(); $("detector").value = form.name; showDetector(); drawNewDetector();
+    state = await api("/api/state"); drawDetectors(form.name); drawNewDetector(); summary(); drawGraph();
     msg.textContent = "Added: " + r.files.join(", "); msg.className = "good";
     show("data");
   } catch (e) { msg.textContent = e.message; msg.className = "bad"; }
@@ -653,9 +726,9 @@ async function detectorRun(kind) {
   try {
     state = await api("/api/state");
     $("roots").replaceChildren(...state.roots.map((r) => el("option", {value: r})));
-    $("root").value = state.roots[0] || ""; $("folder").value = state.folder;
+    cur.root = state.roots[0] || ""; $("root").value = cur.root; $("folder").value = state.folder;
     buildPicker();
-    drawDetectors(); drawNewDetector();
+    drawDetectors(); drawNewDetector(); drawSourceBar();
     if ($("root").value) scan();
   } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
@@ -669,8 +742,9 @@ async function detectorRun(kind) {
   document.addEventListener("click", (e) => { if (!e.target.closest(".pick")) $("picklist").hidden = true; });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("picklist").hidden = true; });
   let frame = 0; new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(drawGraph); }).observe($("canvas"));
-  $("detector").addEventListener("change", () => { showDetector(); drawGraph(); });
-  $("all").addEventListener("change", (e) => { document.querySelectorAll("#series tbody tr:not([hidden]) input[type=checkbox]").forEach((c) => { c.checked = e.target.checked; }); summary(); });
+  $("detector").addEventListener("change", () => { cur.detector = $("detector").value; showDetector(); summary(); drawGraph(); });
+  $("root").addEventListener("input", () => { cur.root = $("root").value.trim(); });
+  $("all").addEventListener("change", (e) => { document.querySelectorAll("#series tbody tr:not([hidden]) input[type=checkbox]").forEach((c) => { c.checked = e.target.checked; if (c.checked) cur.picked.add(c.dataset.series); else cur.picked.delete(c.dataset.series); }); summary(); });
   $("graph").addEventListener("pointermove", onMove);
   $("graph").addEventListener("pointerup", onUp);
   $("graph").addEventListener("pointercancel", () => { drag = null; link = null; drawGraph(); });

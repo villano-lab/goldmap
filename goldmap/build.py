@@ -130,7 +130,7 @@ def validate(form: dict, folder=None) -> dict:
             files = batch.check(path, allow_output_in_repo=False)
         except (ValueError, OSError) as e:
             problem = str(e)
-    return {"ok": problem is None, "files": len(files), "series": len(form["sources"][0]["series"]), "steps": len(form.get("steps", [])), "problem": problem}
+    return {"ok": problem is None, "files": len(files), "series": sum(len(s["series"]) for s in form["sources"]), "steps": len(form.get("steps", [])), "problem": problem}
 
 
 def write(form: dict, folder) -> dict:
