@@ -163,6 +163,10 @@
       <div><label for="name">Name of the dataset</label><input id="name" type="text" placeholder="r76-82v"></div>
       <div><label for="output">Where the results go</label><input id="output" type="text" placeholder="~/goldsluice-output/r76-82v"></div>
     </div>
+    <div class="grid">
+      <div><label for="o-format">Output format</label><select id="o-format"><option value="parquet">Parquet (goldpan reads it back)</option><option value="root">ROOT files in the layout of the collaboration's RQ files (needs uproot)</option></select></div>
+      <div id="o-rootbox" hidden><label for="o-root">Detector number N of the zip&lt;N&gt; tree (leave empty to use the registry's number)</label><input id="o-root" type="number" min="0"></div>
+    </div>
     <details>
       <summary>Run metadata (HV, trigger, …) per series</summary>
       <label><input type="checkbox" id="usemeta" checked> Write it to <code>series.csv</code> and refer to it from the definition</label>
@@ -529,7 +533,8 @@ function drawGraph() {
     }
   });
   const outs = nodes.filter((n) => n.kind === "out");
-  nodes.push({id: "files", kind: "out", x: FILES_X, y: 14, w: W, title: "output files", lines: ["Parquet, one record per channel", "(or RQ-style ROOT)"], fixed: true, tab: "files"});
+  nodes.push({id: "files", kind: "out", x: FILES_X, y: 14, w: W, title: "output files", fixed: true, tab: "files",
+    lines: $("o-format").value === "root" ? ["RQ-style ROOT files", "one zip<N> tree per detector"] : ["Parquet, one record per channel", "(or RQ-style ROOT)"]});
   outs.forEach((n) => edges.push([n.id, "files"]));
   if (!steps.length) rawIds.forEach((id) => edges.push([id, "files"]));
   nodes.forEach((n) => { n.h = n.kind === "out" || n.kind === "raw" ? 30 + n.lines.length * 16 : Math.max(STEP_H, 34 + n.lines.length * 16); });
@@ -653,7 +658,9 @@ function form() {
     [...tr.querySelectorAll("input")].forEach((i, k) => { if (i.value.trim() !== "") row[META[k]] = i.value.trim(); });
     return row;
   });
-  const out = {name: $("name").value.trim() || $("name").placeholder, output: $("output").value.trim() || $("output").placeholder, description: $("description").value.trim(), folder: $("folder").value.trim(),
+  const dets = new Set(sources.map((s) => s.detector).filter(Boolean));
+  if ($("o-format").value === "root" && dets.size > 1) throw new Error("ROOT output is for one detector only: use Parquet, or make one definition per detector.");
+  const out = {output_format: $("o-format").value, root_detector: $("o-root").value, name: $("name").value.trim() || $("name").placeholder, output: $("output").value.trim() || $("output").placeholder, description: $("description").value.trim(), folder: $("folder").value.trim(),
     registry: state.registry.filter((f) => regOn.has(f)), sources: sources.map((src) => ({name: src.name, format: "idx", root: src.root, series: chosenOf(src), detector: src.detector})), steps: processing};
   if ($("usemeta").checked) out.metadata_rows = rows;
   return out;
@@ -664,6 +671,9 @@ function suggestFiles() {
   const n = chosen().length, d = [...new Set(sources.map((s) => s.detector).filter(Boolean))].join("+") || "processing";
   $("name").placeholder = n === 1 ? chosen()[0] : `${d}-${n}series`.replace(/[^A-Za-z0-9_.-]/g, "-");
   $("output").placeholder = `${state.output_root}/${$("name").value.trim() || $("name").placeholder}`;
+  const one = [...new Set(sources.map((s) => detectorOf(s)).filter(Boolean))];
+  $("o-root").placeholder = one.length === 1 && one[0].number !== null && one[0].number !== undefined ? String(one[0].number) : "";
+  $("o-rootbox").hidden = $("o-format").value !== "root";
 }
 
 async function run(kind) {
@@ -784,6 +794,7 @@ async function detectorRun(kind) {
     }
   });
   $("name").addEventListener("input", suggestFiles);
+  $("o-format").addEventListener("change", () => { suggestFiles(); drawGraph(); });
   $("d-readout").addEventListener("change", () => { $("d-newreadout").hidden = $("d-readout").value !== "@new"; });
   $("d-addchannel").addEventListener("click", () => { channelRow(); suggestDetector(); });
   $("d-channels").addEventListener("input", suggestDetector);

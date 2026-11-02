@@ -11,6 +11,7 @@ The form is plain JSON (what the page sends)::
 
 `goldpan.dataset` writes and checks the definition and `goldpan.runmeta` the table; nothing here knows the rules of either.
 """
+import importlib.util
 import os
 import tempfile
 from pathlib import Path
@@ -77,6 +78,12 @@ def definition(form: dict, folder, absolute: bool = False) -> dict:
         head["registry"] = [_registry_path(folder, r, absolute) for r in form["registry"]]
     if form.get("metadata"):
         head["metadata"] = METADATA_FILE
+    if form.get("output_format") == "root":
+        if len({s.get("detector") for s in form.get("sources", [])}) > 1:
+            raise ValueError("ROOT output is for one detector only (one zip<N> tree): use Parquet, or make one definition per detector")
+        head["output_format"] = "root"
+        if form.get("root_detector") not in (None, ""):
+            head["root_detector"] = _number(form["root_detector"], "the ROOT detector number", int)
     if not form.get("sources"):
         raise ValueError("add at least one source")
     return {"dataset": head, "sources": [_source(s, i) for i, s in enumerate(form["sources"])],
@@ -130,6 +137,8 @@ def validate(form: dict, folder=None) -> dict:
             files = batch.check(path, allow_output_in_repo=False)
         except (ValueError, OSError) as e:
             problem = str(e)
+        if problem is None and form.get("output_format") == "root" and importlib.util.find_spec("uproot") is None:
+            problem = "ROOT output needs the package uproot (python -m pip install uproot, or goldpan[root])"
     return {"ok": problem is None, "files": len(files), "series": sum(len(s["series"]) for s in form["sources"]), "steps": len(form.get("steps", [])), "problem": problem}
 
 
