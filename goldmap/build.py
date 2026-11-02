@@ -229,11 +229,19 @@ def _registry_module():
     return registry
 
 
+def _plain(error: ValueError) -> ValueError:
+    """goldpan's message without the 'the new record: ' it starts with (there is no file to name)."""
+    return ValueError(str(error).replace("the new record: ", "", 1))
+
+
 def detector_preview(form: dict) -> str:
     """The text that would be added to the registry (the readout first, when the form makes one), checked by goldpan."""
     registry = _registry_module()
     detector, readout = detector_records(form)
-    parts = ([registry.record_text("readouts", *readout)] if readout else []) + [registry.record_text("detectors", *detector)]
+    try:
+        parts = ([registry.record_text("readouts", *readout)] if readout else []) + [registry.record_text("detectors", *detector)]
+    except ValueError as e:
+        raise _plain(e) from None
     return "\n".join(parts)
 
 

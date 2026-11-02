@@ -62,6 +62,7 @@
   #picklist .opt.k-step { background:var(--step); border-left-color:var(--edge); }
   #picklist .opt:hover, #picklist .opt[aria-selected=true] { outline:2px solid var(--accent); outline-offset:-2px; }
   #picklist .opt .muted { margin-left:auto; text-align:right; }
+  #graph circle.badge { fill:var(--accent); stroke:var(--card); stroke-width:2; } #graph text.badgetext { fill:var(--accent-fg); font:700 12px system-ui, sans-serif; text-anchor:middle; }
   #graph text.tagtext { fill:var(--fg); font:700 10px system-ui, sans-serif; letter-spacing:.06em; opacity:.7; }
 </style>
 </head>
@@ -100,7 +101,7 @@
   </section>
 
   <section id="steps" hidden>
-    <p class="guide">Build the processing as boxes. Add a step and drag it where you like; click a box to set its parameters. To make a step read a filter's result, drag from the filter's right-hand dot onto that step (double-click a line to undo). Steps run left to right through the lines; the green boxes are the quantities that end up in the output files.</p>
+    <p class="guide">Build the processing as boxes. Add a step and drag it where you like; click a box to set its parameters. To make a step read a filter's result, drag from the filter's right-hand dot onto that step (double-click a line to undo). The number on a box is the order the steps run in: a step comes after the one it reads, and otherwise the one further left runs first. The green boxes are the quantities that end up in the output files.</p>
     <div class="row"><div><label style="margin-top:0">Add a step</label><div class="pick"><button type="button" id="pickbtn" aria-haspopup="listbox"><span id="picklabel"></span><span class="caret">▾</span></button><div id="picklist" role="listbox" hidden></div></div></div><button id="addstep" class="primary">Add</button></div>
     <div id="canvas"><svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg></div>
     <div class="legend"><span><span class="tag t-raw">raw data</span> the series and the detector</span><span><span class="tag t-filter">filter</span> gives a filtered trace for another step</span><span><span class="tag t-step">step</span> gives quantities</span><span><span class="tag t-out">output</span> what is written (RQ)</span><span>drag the bottom edge of the canvas to make it taller</span></div>
@@ -350,7 +351,7 @@ function addStep() {
   const box = el("div", {className: "step"});
   const remove = el("button", {textContent: "Remove this step", type: "button", className: "link"});
   const result = alg.kind === "trace" ? "gives a filtered trace" : alg.outputs.join(", ");
-  box.append(el("header", {className: "row"}, el("h3", {}, tag(alg.kind === "trace" ? "filter" : "step"), ` ${record.id}. ${alg.name} `, el("small", {textContent: "→ " + result})), remove));
+  box.append(el("header", {className: "row"}, el("h3", {}, tag(alg.kind === "trace" ? "filter" : "step"), (record.heading = el("span", {textContent: ` ${record.id}. ${alg.name} `})), el("small", {textContent: "→ " + result})), remove));
   if (alg.summary) box.append(el("p", {className: "muted", textContent: alg.summary, style: "margin:2px 0 0"}));
   const grid = el("div", {className: "grid"});
   const ch = el("input", {type: "text", value: "role:phonon"}); record.fields.channels = ch; ch.addEventListener("input", drawGraph);
@@ -409,20 +410,22 @@ function selectStep(id) {
 }
 function refreshReads(rec) {
   const options = [el("option", {value: "", textContent: "the raw trace"})];
-  steps.filter((t) => isTrace(t) && t !== rec && !reaches(t, rec)).forEach((t) => options.push(el("option", {value: String(t.id), textContent: `the result of ${t.id}. ${t.algorithm}`})));
+  steps.filter((t) => isTrace(t) && t !== rec && !reaches(t, rec)).forEach((t) => options.push(el("option", {value: String(t.id), textContent: `the result of step ${pos[t.id]}, ${t.algorithm}`})));
   rec.reads.replaceChildren(...options); rec.reads.value = rec.input === null ? "" : String(rec.input);
 }
 
 function drawGraph() {
   const canvas = $("canvas"); if (!canvas.clientWidth) return;             // the tab is not shown
   const root = $("graph"); root.replaceChildren();
+  pos = positions();
+  steps.forEach((s) => { s.heading.textContent = ` ${pos[s.id]}. ${s.algorithm} `; });
   const names = chosen(), d = detector();
   const dumps = series.filter((s) => names.includes(s.series)).reduce((n, s) => n + s.dumps, 0);
   const nodes = [{id: "raw", kind: "raw", x: RAW_X, y: 14, w: W, lines: [`${names.length} series, ${dumps} dumps`, d ? d.channels.length + " channels" : "choose a detector"], title: d ? d.name : "no detector", fixed: true, tab: "data"}];
   const edges = [], clashes = new Set(), seen = {};
   steps.forEach((s) => {
     const chans = channelsOf(s), trace = isTrace(s);
-    nodes.push({id: "s" + s.id, kind: trace ? "trace" : "step", x: s.x, y: s.y, w: W, title: `${s.id}. ${s.algorithm}`, step: s,
+    nodes.push({id: "s" + s.id, kind: trace ? "trace" : "step", x: s.x, y: s.y, w: W, title: s.algorithm, step: s,
       lines: [trace ? `filter · ${chans.length} channel${chans.length === 1 ? "" : "s"}` : `${chans.length} channel${chans.length === 1 ? "" : "s"}`]});
     edges.push([s.input === null ? "raw" : "s" + s.input, "s" + s.id, s]);
     if (!trace) {
@@ -454,7 +457,11 @@ function drawGraph() {
   nodes.forEach((n) => {
     const g = svg("g", {class: "node" + (n.fixed ? " fixed" : "") + (n.step && selected === n.step.id && !n.fixed ? " selected" : "")});
     g.append(svg("rect", {x: n.x, y: n.y, width: n.w, height: n.h, rx: 7, class: `box ${n.kind}` + (clashes.has(n.id) ? " clash" : "")}));
-    g.append(svg("text", {x: n.x + 10, y: n.y + 20}, n.title));
+    g.append(svg("text", {x: n.x + (n.step && !n.fixed ? 22 : 10), y: n.y + 20}, n.title));
+    if (n.step && !n.fixed) {                                                 // the place in the run order
+      g.append(svg("circle", {cx: n.x + 4, cy: n.y + 4, r: 11, class: "badge"}));
+      g.append(svg("text", {x: n.x + 4, y: n.y + 8, class: "badgetext"}, String(pos[n.step.id])));
+    }
     g.append(svg("text", {x: n.x + n.w - 8, y: n.y + 16, class: "tagtext", "text-anchor": "end"}, TAGS[n.kind]));
     n.lines.forEach((l, i) => g.append(svg("text", {x: n.x + 10, y: n.y + 38 + i * 16, class: "sub"}, l)));
     if (n.step && !n.fixed) {
@@ -517,7 +524,7 @@ function stepForm(s) {
   for (const [name, f] of Object.entries(s.fields)) {
     if (!f || !f.input) continue;
     if (f.mode && f.mode.value === "readout") { out.params[name] = "@readout." + name; continue; }
-    if (f.input.value === "") throw new Error(`Step ${s.id} (${s.algorithm}): give a value for ${name}.`);
+    if (f.input.value === "") throw new Error(`Step ${pos[s.id] || s.id} (${s.algorithm}): give a value for ${name}.`);
     out.params[name] = Number(f.input.value);
   }
   if (isTrace(s)) out.name = ownName(s);
@@ -525,15 +532,18 @@ function stepForm(s) {
   if (suffixOf(s)) out.suffix = suffixOf(s);
   return out;
 }
-function ordered() {                                  // the steps in an order in which every step comes after the one it reads
+function ordered() {                                  // the order the steps run in: after the step each reads, and otherwise the one further left (then higher up) first
   const done = [], left = [...steps];
   while (left.length) {
-    const next = left.find((s) => s.input === null || done.some((d) => d.id === s.input));
-    if (!next) throw new Error("The steps read each other in a circle.");
-    done.push(next); left.splice(left.indexOf(next), 1);
+    const ready = left.filter((s) => s.input === null || done.some((d) => d.id === s.input));
+    if (!ready.length) throw new Error("The steps read each other in a circle.");
+    ready.sort((a, b) => a.x - b.x || a.y - b.y || a.id - b.id);
+    done.push(ready[0]); left.splice(left.indexOf(ready[0]), 1);
   }
   return done;
 }
+let pos = {};                                         // step id -> its place in the run order (1, 2, ...)
+function positions() { const m = {}; try { ordered().forEach((s, i) => { m[s.id] = i + 1; }); } catch (e) { /* a circle cannot be made: setInput refuses it */ } return m; }
 
 function form() {
   const names = chosen();
