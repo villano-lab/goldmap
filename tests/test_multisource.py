@@ -57,3 +57,19 @@ def test_detectors_and_readouts_say_which_registry_folder_they_are_in(tmp_path, 
     assert by_name["TEST-C"]["registry"] == str(extra) and by_name["NAI-S2"]["registry"] == str(registry)
     assert {x["registry"] for x in catalog.readouts(folders)} == {str(registry)}
     assert catalog.detectors([]) == []
+
+
+def test_a_step_that_names_its_sources_is_written_and_loads(tmp_path, idx, two_detectors):
+    f = form(idx, two_detectors, tmp_path / "out")
+    f["sources"] = [{"name": "raw", "format": "idx", "root": str(idx), "series": ["07221111_2153"], "detector": "NAI-S2"},
+                    {"name": "raw2", "format": "idx", "root": str(idx), "series": ["07221112_0943"], "detector": "TEST-B"}]
+    f["steps"] = [{"algorithm": "baseline", "channels": "role:phonon",
+                   "params": {"glitch_samples": "@readout.glitch_samples", "pretrigger_samples": "@readout.pretrigger_samples"}},
+                  {"algorithm": "integral", "channels": "role:phonon", "sources": ["raw2"],
+                   "params": {"glitch_samples": "@readout.glitch_samples", "pretrigger_samples": "@readout.pretrigger_samples"}}]
+    spec = dataset.load(build.write(f, tmp_path / "work")["definition"])
+    assert [s.sources for s in spec.steps] == [None, ("raw2",)]
+    assert build.validate(f, tmp_path / "work2")["ok"] is True
+    f["steps"][1]["sources"] = ["nobody"]
+    with pytest.raises(ValueError, match="not sources of this file"):
+        build.validate(f, tmp_path / "work3")

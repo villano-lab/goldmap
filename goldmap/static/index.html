@@ -69,6 +69,7 @@
   .chip[aria-current=true] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); font-weight:600; } .chip.add { color:var(--muted); border-style:dashed; }
   .chip .x { margin-left:4px; color:var(--muted); } .chip .x:hover { color:var(--bad); }
   #registries label.check { display:flex; gap:8px; align-items:center; margin:4px 0; font-size:.88rem; color:var(--fg); } #registries .muted { margin-left:auto; }
+  .runs label.check { display:flex; gap:8px; align-items:center; margin:3px 0; font-size:.88rem; color:var(--fg); }
 </style>
 </head>
 <body>
@@ -111,7 +112,7 @@
   </section>
 
   <section id="steps" hidden>
-    <p class="guide">Build the processing as boxes. Add a step and drag it where you like; click a box to set its parameters. To make a step read a filter's result, drag from the filter's right-hand dot onto that step (double-click a line to undo). The number on a box is the order the steps run in: a step comes after the one it reads, and otherwise the one further left runs first. The green boxes are the quantities that end up in the output files.</p>
+    <p class="guide">Build the processing as boxes. Add a step and drag it where you like; click a box to set its parameters. To make a step read a filter's result, drag from the filter's right-hand dot onto that step; to make a step run on one source only, double-click the line from the other source's raw-data box (drag from its right-hand dot to put it back). Double-clicking any line undoes it. The number on a box is the order the steps run in: a step comes after the one it reads, and otherwise the one further left runs first. The green boxes are the quantities that end up in the output files.</p>
     <div class="row"><div><label style="margin-top:0">Add a step</label><div class="pick"><button type="button" id="pickbtn" aria-haspopup="listbox"><span id="picklabel"></span><span class="caret">▾</span></button><div id="picklist" role="listbox" hidden></div></div></div><button id="addstep" class="primary">Add</button></div>
     <div id="canvas"><svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg></div>
     <div class="legend"><span><span class="tag t-raw">raw data</span> the series and the detector</span><span><span class="tag t-filter">filter</span> gives a filtered trace for another step</span><span><span class="tag t-step">step</span> gives quantities</span><span><span class="tag t-out">output</span> what is written (RQ)</span><span>drag the bottom edge of the canvas to make it taller</span></div>
@@ -263,7 +264,11 @@ function switchSource(src) { if (src !== cur) { saveSource(); loadSource(src); }
 function addSource() { saveSource(); const s = newSource(); s.root = cur.root; sources.push(s); loadSource(s); if (s.root) scan(); }
 function removeSource(src) {
   if (sources.length === 1) return;
+  const lost = steps.filter((s) => s.only !== null && s.only.size === 1 && s.only.has(src.id));          // steps that ran on this source alone
+  steps.forEach((s) => { if (s.only !== null) s.only.delete(src.id); });
   const wasCurrent = src === cur; sources = sources.filter((x) => x !== src);
+  lost.forEach((s) => removeStep(s));
+  if (lost.length) notice = `Removed ${lost.length === 1 ? "a step" : lost.length + " steps"} that only ran on the source you removed.`;
   if (wasCurrent) loadSource(sources[0]); else { summary(); drawGraph(); }
 }
 function drawSourceBar() {
@@ -406,6 +411,23 @@ const FILES_X = VIEW_W - W - 12;
 const TAGS = {raw: "RAW DATA", step: "STEP", trace: "FILTER", out: "OUTPUT"};
 const SUGGEST = {order: "4", fraction: "0.2"};         // grey suggestions for parameters that have an ordinary value; Tab fills them in
 const byId = (id) => steps.find((s) => s.id === id) || null;
+const allIds = () => sources.map((s) => s.id);
+function effective(rec) {                             // the ids of the sources `rec` runs on: those it is connected to, among those its filter runs on
+  const base = rec.input === null ? allIds() : effective(byId(rec.input));
+  return rec.only === null ? base : base.filter((id) => rec.only.has(id));
+}
+function setRuns(rec, ids) {                          // run `rec` on exactly `ids` (a Set), as far as its filter allows
+  const base = rec.input === null ? allIds() : effective(byId(rec.input)), want = base.filter((id) => ids.has(id));
+  if (!want.length) { notice = "A step must run on at least one source (remove the step to drop it)."; drawGraph(); return; }
+  rec.only = want.length === base.length ? null : new Set(want);
+  drawGraph();
+}
+function linkSource(rec, src) {
+  const base = rec.input === null ? allIds() : effective(byId(rec.input));
+  if (!base.includes(src.id)) { notice = "That step reads a filter that does not run on this source: change the filter's sources first."; drawGraph(); return; }
+  setRuns(rec, new Set([...effective(rec), src.id]));
+}
+function unlinkSource(rec, src) { setRuns(rec, new Set(effective(rec).filter((id) => id !== src.id))); }
 const isTrace = (s) => s.kind === "trace";
 function ownName(s) { return (s.fields.name && (s.fields.name.value.trim() || s.fields.name.placeholder)) || null; }
 function reaches(from, to) {                         // does the chain of inputs of `from` run through `to`?
@@ -431,7 +453,7 @@ function addStep() {
   const alg = state.algorithms.find((a) => a.name === picked);
   if (!alg) return;
   $("nosteps").hidden = true;
-  const record = {id: ++stepCount, algorithm: alg.name, kind: alg.kind, outputs: alg.outputs, input: null, fields: {}, alg};
+  const record = {id: ++stepCount, algorithm: alg.name, kind: alg.kind, outputs: alg.outputs, input: null, only: null, fields: {}, alg};
   const box = el("div", {className: "step"});
   const remove = el("button", {textContent: "Remove this step", type: "button", className: "link"});
   const result = alg.kind === "trace" ? "gives a filtered trace" : alg.outputs.join(", ");
@@ -457,6 +479,8 @@ function addStep() {
   box.append(grid);
   record.reads = el("select", {}); record.reads.addEventListener("change", () => setInput(record, record.reads.value === "" ? null : Number(record.reads.value)));
   box.append(el("label", {textContent: "Reads"}), record.reads);
+  record.runs = el("div", {className: "runs"});
+  box.append(el("label", {textContent: "Runs on (a step runs on every source unless you untick one)"}), record.runs);
   if (auto.length) {                                // the parameters that belong to the readout: taken from it unless set by hand
     const more = el("details", {}, el("summary", {textContent: "Taken from the readout: " + auto.map(([p]) => p.name).join(", ")}));
     auto.forEach(([p, input]) => {
@@ -492,6 +516,14 @@ function selectStep(id) {
   steps.forEach((s) => { s.box.hidden = s.id !== id; });
   drawGraph();
 }
+function refreshRuns(rec) {
+  const base = rec.input === null ? allIds() : effective(byId(rec.input)), eff = new Set(effective(rec));
+  rec.runs.replaceChildren(...sources.map((src, i) => {
+    const d = detectorOf(src), cb = el("input", {type: "checkbox", checked: eff.has(src.id), disabled: !base.includes(src.id)});
+    cb.addEventListener("change", () => setRuns(rec, new Set(allIds().filter((id) => (id === src.id ? cb.checked : eff.has(id))))));
+    return el("label", {className: "check"}, cb, ` source ${i + 1}: ${d ? d.name : (src.detector || "no detector")}`);
+  }));
+}
 function refreshReads(rec) {
   const options = [el("option", {value: "", textContent: "the raw trace"})];
   steps.filter((t) => isTrace(t) && t !== rec && !reaches(t, rec)).forEach((t) => options.push(el("option", {value: String(t.id), textContent: `the result of step ${pos[t.id]}, ${t.algorithm}`})));
@@ -511,7 +543,7 @@ function drawGraph() {
   const rawIds = nodes.map((n) => n.id);
   const edges = [], clashes = new Set(), seen = {};
   steps.forEach((s) => {
-    const trace = isTrace(s), per = sources.map((src) => ({src, d: detectorOf(src), c: channelsFor(s, detectorOf(src))}));
+    const trace = isTrace(s), eff = effective(s), per = sources.filter((src) => eff.includes(src.id)).map((src) => ({src, d: detectorOf(src), c: channelsFor(s, detectorOf(src))}));
     const counts = per.filter((p) => p.d).map((p) => p.c.names.length);                    // a source without a detector yet has no channels to count
     if (!counts.length) counts.push(0);
     const unit = counts.length === 1 && counts[0] === 1 ? "channel" : "channels";
@@ -521,7 +553,7 @@ function drawGraph() {
       else if (p.c.missing.length) lines.push(`⚠ ${p.d.name} has no ${p.c.missing.join(", ")}`);
     });
     nodes.push({id: "s" + s.id, kind: trace ? "trace" : "step", x: s.x, y: s.y, w: W, title: s.algorithm, step: s, lines});
-    if (s.input === null) rawIds.forEach((id) => edges.push([id, "s" + s.id, s])); else edges.push(["s" + s.input, "s" + s.id, s]);
+    if (s.input === null) per.forEach((p) => edges.push(["raw" + p.src.id, "s" + s.id, {step: s, src: p.src}])); else edges.push(["s" + s.input, "s" + s.id, {step: s}]);
     if (!trace) {
       const outs = s.outputs.map((o) => o + suffixOf(s));
       per.forEach((p) => outs.forEach((o) => p.c.names.forEach((c) => {                    // two steps clash only on the same channel of the same detector
@@ -532,6 +564,8 @@ function drawGraph() {
       edges.push(["s" + s.id, "o" + s.id]);
     }
   });
+  const covered = new Set(); steps.forEach((s) => effective(s).forEach((id) => covered.add(id)));
+  if (steps.length) nodes.filter((n) => n.kind === "raw" && !covered.has(n.source.id)).forEach((n) => n.lines.push("⚠ no step runs on it"));
   const outs = nodes.filter((n) => n.kind === "out");
   nodes.push({id: "files", kind: "out", x: FILES_X, y: 14, w: W, title: "output files", fixed: true, tab: "files",
     lines: $("o-format").value === "root" ? ["RQ-style ROOT files", "one zip<N> tree per detector"] : ["Parquet, one record per channel", "(or RQ-style ROOT)"]});
@@ -546,11 +580,15 @@ function drawGraph() {
   marker.append(svg("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(marker); root.append(defs);
   const index = Object.fromEntries(nodes.map((n) => [n.id, n]));
   const curve = (x1, y1, x2, y2) => { const mid = (x1 + x2) / 2; return `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2 - 2},${y2}`; };
-  edges.forEach(([a, b, s]) => {
+  edges.forEach(([a, b, info]) => {
     const p = index[a], q = index[b]; if (!p || !q) return;
     const dd = curve(p.x + p.w, p.y + p.h / 2, q.x, q.y + q.h / 2);
     root.append(svg("path", {d: dd, class: "edge", "marker-end": "url(#arrow)"}));
-    if (s && s.input !== null) { const hit = svg("path", {d: dd, class: "hit"}); hit.addEventListener("dblclick", () => setInput(s, null)); root.append(hit); }
+    if (info && (info.src || info.step.input !== null)) {                      // a line from a source or from a filter can be taken away with a double-click
+      const hit = svg("path", {d: dd, class: "hit"});
+      hit.addEventListener("dblclick", () => (info.src ? unlinkSource(info.step, info.src) : setInput(info.step, null)));
+      root.append(hit);
+    }
   });
   nodes.forEach((n) => {
     const g = svg("g", {class: "node" + (n.fixed ? " fixed" : "") + (n.step && selected === n.step.id && !n.fixed ? " selected" : "")});
@@ -562,6 +600,10 @@ function drawGraph() {
     }
     g.append(svg("text", {x: n.x + n.w - 8, y: n.y + 16, class: "tagtext", "text-anchor": "end"}, TAGS[n.kind]));
     n.lines.forEach((l, i) => g.append(svg("text", {x: n.x + 10, y: n.y + 38 + i * 16, class: "sub"}, l)));
+    if (n.kind === "raw") {                                                    // drag from here onto a step to run that step on this source
+      const out = svg("circle", {cx: n.x + n.w, cy: n.y + n.h / 2, r: 6, class: "port out"});
+      out.addEventListener("pointerdown", (e) => startLink(e, {raw: n.source})); g.append(out);
+    }
     if (n.step && !n.fixed) {
       const s = n.step, cy = n.y + n.h / 2;
       g.append(svg("circle", {cx: n.x, cy, r: 5, class: "port in"}));
@@ -575,7 +617,7 @@ function drawGraph() {
   $("flowmsg").textContent = notice || (clashes.size ? "Two steps give a quantity of the same name on the same channel: give one of them a suffix (select its box)." : "");
   notice = "";
   $("flowmsg").className = "muted bad";
-  if (selected !== null && byId(selected)) refreshReads(byId(selected));
+  if (selected !== null && byId(selected)) { refreshReads(byId(selected)); refreshRuns(byId(selected)); }
   graphIndex = index;
 }
 let graphIndex = {};
@@ -602,7 +644,7 @@ function onMove(e) {
     if (Math.abs(p.x - drag.x0) + Math.abs(p.y - drag.y0) > 3) drag.moved = true;
     if (drag.moved) { drag.s.x = Math.max(RAW_X + W + 20, Math.min(FILES_X - (isTrace(drag.s) ? W : 2 * W + OUT_GAP) - 20, p.x - drag.dx)); drag.s.y = Math.max(8, p.y - drag.dy); drawGraph(); }
   } else if (link) {
-    const p = svgPoint(e), from = graphIndex["s" + link.from.id];
+    const p = svgPoint(e), from = graphIndex[link.from.raw ? "raw" + link.from.raw.id : "s" + link.from.id];
     const old = document.querySelector("#graph path.linking"); if (old) old.remove();
     if (from) { const x1 = from.x + from.w, y1 = from.y + from.h / 2, mid = (x1 + p.x) / 2; $("graph").append(svg("path", {d: `M${x1},${y1} C${mid},${y1} ${mid},${p.y} ${p.x},${p.y}`, class: "edge linking"})); }
   }
@@ -612,7 +654,8 @@ function onUp(e) {
   else if (link) {
     const from = link.from; link = null;
     const target = dropTarget(svgPoint(e));
-    if (target && target !== from) setInput(target, from.id); else drawGraph();
+    if (from.raw) { if (target) linkSource(target, from.raw); else drawGraph(); }
+    else if (target && target !== from) setInput(target, from.id); else drawGraph();
   }
 }
 
@@ -628,6 +671,8 @@ function stepForm(s) {
   if (isTrace(s)) out.name = ownName(s);
   if (s.input !== null) out.input = ownName(byId(s.input));
   if (suffixOf(s)) out.suffix = suffixOf(s);
+  const eff = effective(s);
+  if (eff.length < sources.length) out.sources = sources.filter((src) => eff.includes(src.id)).map((src) => src.name);      // only when it is not all of them
   return out;
 }
 function ordered() {                                  // the order the steps run in: after the step each reads, and otherwise the one further left (then higher up) first
@@ -652,6 +697,9 @@ function form() {
   const none = sources.findIndex((src) => !src.picked.size);
   if (none >= 0) { show("data"); switchSource(sources[none]); throw new Error(`Source ${none + 1} has no series chosen: choose some, or remove the source.`); }
   const processing = ordered().map(stepForm);
+  const covered = new Set(); steps.forEach((s) => effective(s).forEach((id) => covered.add(id)));
+  const bare = sources.findIndex((src) => !covered.has(src.id));
+  if (steps.length && bare >= 0) { show("steps"); throw new Error(`No step runs on source ${bare + 1}: connect it to a step (drag from its raw-data box), or remove the source.`); }
   drawMeta();
   const rows = [...document.querySelectorAll("#meta tbody tr")].map((tr) => {
     const row = {series: tr.dataset.series};

@@ -57,7 +57,7 @@ def _step(form_step: dict, index: int) -> dict:
     if not form_step.get("algorithm"):
         raise ValueError(f"step {index + 1}: choose an algorithm")
     out = {"algorithm": form_step["algorithm"], "channels": form_step.get("channels") or "all"}
-    for key in ("name", "input", "suffix"):
+    for key in ("name", "input", "suffix", "sources"):                    # `sources`: the names of the sources the step runs on (all, when it is not there)
         if form_step.get(key):
             out[key] = form_step[key]
     if form_step.get("params"):

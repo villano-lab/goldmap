@@ -26,8 +26,10 @@ The page opens in your browser (the address is also printed). The page has three
    **Several sources:** raw data from different detectors (or different folders) are separate *sources*. **+ Add a source** gives each its own folder, series, filters and
    detector (the chips above the folder box switch between them). All the registry folders you started goldmap with are merged, so the detectors of
    two registries can be used in one processing. The steps apply to every source: `role:phonon` means each detector's own phonon channels, and a box on the
-   diagram warns when a detector has none. The definition is written with one `[[sources]]` per source. Not possible in one definition: different steps for
-   different detectors (make two definitions) and ROOT output for several detectors.
+   diagram warns when a detector has none. The definition is written with one `[[sources]]` per source. **Different steps for different sources:** every raw-data box starts out connected to every step. Double-click a line from a raw-data box to take that
+   source off the step, or untick it under *Runs on* in the step's card; drag from the raw-data box's right-hand dot onto a step to put it back. The definition then gets
+   `sources = [...]` on that step (this needs a goldpan with definition format 7). A step that reads a filter can only run where the filter runs, and every source needs at least one
+   step; removing a source removes the steps that ran on it alone. ROOT output is for one detector only.
 2. **Steps:** the processing as boxes on a canvas. Add a step, drag it where you like, click it to set its parameters (the ones that belong to the readout are taken
    from it). Drag from a filter's right-hand dot onto a step to make that step read the filtered trace (double-click the line to undo). The green boxes show the
    quantities that end up in the output.
