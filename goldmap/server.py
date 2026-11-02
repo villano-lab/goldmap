@@ -25,6 +25,18 @@ class Config:
         self.roots = [str(r) for r in roots]
         self.folder = str(folder) if folder else str(Path.cwd())
 
+    def registries(self) -> list:
+        """The registry folders to read: the ones given, or the default one when it already exists."""
+        return self.registry or ([self.default_registry()] if Path(self.default_registry()).is_dir() else [])
+
+    def default_registry(self) -> str:
+        """Where a new detector goes when no registry folder was given: ``registry`` inside the folder files are written to."""
+        return str(Path(self.folder) / "registry")
+
+    def targets(self) -> list:
+        """The registry folders a detector may be added to: the given ones, or the default one."""
+        return self.registry or [self.default_registry()]
+
 
 def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
     """A server for `config` on 127.0.0.1 (port 0: any free port). Its `token` attribute is the secret the page carries."""
@@ -73,8 +85,9 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
             try:
                 if url.path == "/api/state":
                     facts = catalog.series_facts(config.series_list) if config.series_list else {}
-                    return self._json(200, {"algorithms": catalog.algorithms(), "detectors": catalog.detectors(config.registry),
-                                            "registry": config.registry, "roots": config.roots, "folder": config.folder, "facts": facts})
+                    return self._json(200, {"algorithms": catalog.algorithms(), "detectors": catalog.detectors(config.registries()),
+                                            "readouts": catalog.readouts(config.registries()), "registry": config.registries(),
+                                            "targets": config.targets(), "roots": config.roots, "folder": config.folder, "facts": facts})
                 if url.path == "/api/scan":
                     root = parse_qs(url.query).get("root", [""])[0]
                     return self._json(200, {"series": catalog.scan(root)})
@@ -90,6 +103,13 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
             try:
                 form = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
                 folder = form.pop("folder", None) or config.folder
+                if self.path == "/api/detector/preview":
+                    return self._json(200, {"text": build.detector_preview(form)})
+                if self.path == "/api/detector/add":
+                    target = form.pop("target", None) or config.targets()[0]
+                    if target not in config.targets():
+                        return self._json(400, {"error": f"a detector can only be added to {config.targets()}"})
+                    return self._json(200, build.detector_add(form, target))
                 if self.path == "/api/preview":
                     return self._json(200, {"text": build.preview(form, folder)})
                 if self.path == "/api/write":

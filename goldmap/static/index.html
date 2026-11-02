@@ -21,8 +21,8 @@
   .guide { color:var(--muted); margin:10px 0 4px; }
   section[hidden] { display:none; }
   label { display:block; font-size:.82rem; color:var(--muted); margin:12px 0 3px; }
-  input, select, button { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 9px; }
-  input[type=text], input[type=number], select { width:100%; } input[type=checkbox] { width:auto; accent-color:var(--accent); }
+  input, select, textarea, button { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 9px; }
+  input[type=text], input[type=number], select, textarea { width:100%; } input[type=checkbox] { width:auto; accent-color:var(--accent); }
   button { cursor:pointer; } button.primary { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); font-weight:600; }
   button.link { border:0; background:none; color:var(--muted); padding:2px 4px; text-decoration:underline; font-size:.85rem; }
   .row { display:flex; gap:8px; align-items:flex-end; } .row > :first-child { flex:1; }
@@ -54,6 +54,7 @@
     <button data-tab="steps">2 · Steps<small id="t-steps">none yet</small></button>
     <button data-tab="flow">3 · Flow<small id="t-flow">what comes out</small></button>
     <button data-tab="files">4 · Files<small>name and write</small></button>
+    <button data-tab="newdet" style="margin-left:auto">+ Detector<small>add to the registry</small></button>
   </nav>
 
   <section id="data">
@@ -67,6 +68,7 @@
     </div>
     <label for="detector">Detector</label><select id="detector"></select>
     <p class="muted" id="detinfo"></p>
+    <p class="muted"><button class="link" data-go="newdet">The detector is not listed? Add it to the registry</button></p>
     <div class="actions"><span></span><button class="primary" data-go="steps">Next: steps</button></div>
   </section>
 
@@ -83,6 +85,43 @@
     <div class="legend"><span><i style="background:var(--raw)"></i>raw data</span><span><i style="background:var(--step)"></i>step that gives quantities</span><span><i style="background:var(--trace)"></i>filter (gives a trace)</span><span><i style="background:var(--out)"></i>output (RQ)</span></div>
     <p class="muted" id="flowmsg"></p>
     <div class="actions"><button data-go="steps">Back</button><button class="primary" data-go="files">Next: files</button></div>
+  </section>
+
+  <section id="newdet" hidden>
+    <p class="guide">Describe a detector once and it is in the registry for every processing. Say where each fact comes from: what you guessed is <em>inferred</em>; use <em>confirmed</em> only for what a file or a document says.</p>
+    <div class="grid">
+      <div><label for="d-name">Name</label><input id="d-name" type="text" placeholder="NAI-S2"></div>
+      <div><label for="d-number">Detector number (the N of zip&lt;N&gt; in RQ files), optional</label><input id="d-number" type="number" min="0"></div>
+    </div>
+    <label for="d-description">Description</label><input id="d-description" type="text">
+    <div class="grid">
+      <div><label for="d-status">How sure are you?</label><select id="d-status"><option value="inferred">inferred (a guess or a reading of a table)</option><option value="confirmed">confirmed (a file or a document says so)</option></select></div>
+      <div><label for="d-series">Series it applies to, optional (comma-separated)</label><input id="d-series" type="text" placeholder="07221203_2025"></div>
+    </div>
+    <label for="d-evidence">Evidence: where does this come from?</label><textarea id="d-evidence" rows="3"></textarea>
+
+    <h3 style="font-size:.95rem;margin:18px 0 0">Readout</h3>
+    <label for="d-readout">The readout this detector uses</label><select id="d-readout"></select>
+    <div id="d-newreadout" hidden>
+      <div class="grid">
+        <div><label for="r-name">Name of the new readout</label><input id="r-name" type="text" placeholder="DCRC_RUN76"></div>
+        <div><label for="r-pre">Samples before the trigger (pretrigger)</label><input id="r-pre" type="number" min="0"></div>
+        <div><label for="r-glitch">Samples to skip at the start (glitch)</label><input id="r-glitch" type="number" min="0" value="10"></div>
+        <div><label for="r-period">Sample period (seconds)</label><input id="r-period" type="text" placeholder="8e-7"></div>
+        <div><label for="r-status">How sure are you?</label><select id="r-status"><option value="inferred">inferred</option><option value="confirmed">confirmed</option></select></div>
+      </div>
+      <label for="r-evidence">Evidence for these numbers</label><textarea id="r-evidence" rows="2"></textarea>
+    </div>
+
+    <h3 style="font-size:.95rem;margin:18px 0 0">Channels (idx files)</h3>
+    <p class="muted">Where each named channel is wired in a dump: the board it is on (its index in the dump) and its input on that board.</p>
+    <table id="d-channels"><thead><tr><th>Name</th><th>Board</th><th>Input</th><th>Role</th><th></th></tr></thead><tbody></tbody></table>
+    <p><button id="d-addchannel" type="button">Add a channel</button></p>
+
+    <label for="d-target">Add it to the registry folder</label><select id="d-target"></select>
+    <div class="actions"><button data-go="data">Back</button><div><button id="d-preview">Preview</button><button id="d-add" class="primary">Add to the registry</button></div></div>
+    <p id="d-msg"></p>
+    <pre id="d-out" hidden></pre>
   </section>
 
   <section id="files" hidden>
@@ -131,7 +170,7 @@ function svg(tag, attrs, text) { const e = document.createElementNS(SVGNS, tag);
 const fmt = (v) => (v === null || v === undefined ? "" : v);
 
 function show(tab) {
-  ["data", "steps", "flow", "files"].forEach((t) => { $(t).hidden = t !== tab; });
+  ["data", "steps", "flow", "files", "newdet"].forEach((t) => { $(t).hidden = t !== tab; });
   document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-current", b.dataset.tab === tab));
   if (tab === "flow") drawFlow();
   if (tab === "files") drawMeta();
@@ -272,6 +311,51 @@ function form() {
   return out;
 }
 
+
+// ---- a new detector for the registry
+function channelRow(values) {
+  const v = values || {};
+  const mk = (type, value, extra) => el("input", Object.assign({type, value: value === undefined ? "" : value}, extra || {}));
+  const remove = el("button", {textContent: "×", type: "button", className: "link"});
+  const tr = el("tr", {}, el("td", {}, mk("text", v.name, {placeholder: "Side2pA"})), el("td", {}, mk("number", v.detector, {min: 0})), el("td", {}, mk("number", v.input, {min: 0})),
+    el("td", {}, mk("text", v.role === undefined ? "phonon" : v.role, {placeholder: "phonon"})), el("td", {}, remove));
+  remove.addEventListener("click", () => tr.remove());
+  $("d-channels").querySelector("tbody").append(tr);
+}
+function drawNewDetector() {
+  const sel = $("d-readout"); const keep = sel.value;
+  sel.replaceChildren(el("option", {value: "", textContent: "(none)"}), ...state.readouts.map((r) => el("option", {value: r.name, textContent: `${r.name} (${r.pretrigger_samples} pre, ${r.sample_period_s} s)`})),
+    el("option", {value: "@new", textContent: "a new readout…"}));
+  sel.value = keep && [...sel.options].some((o) => o.value === keep) ? keep : (state.readouts.length ? state.readouts[0].name : "@new");
+  $("d-newreadout").hidden = sel.value !== "@new";
+  $("d-target").replaceChildren(...state.targets.map((t) => el("option", {value: t, textContent: t})));
+  if (!$("d-channels").querySelector("tbody tr")) channelRow();
+}
+function detectorForm() {
+  const choice = $("d-readout").value;
+  const out = {name: $("d-name").value.trim(), number: $("d-number").value, description: $("d-description").value.trim(), status: $("d-status").value,
+    evidence: $("d-evidence").value.trim(), series: $("d-series").value.split(",").map((x) => x.trim()).filter(Boolean), target: $("d-target").value,
+    readout: choice && choice !== "@new" ? choice : null, new_readout: null,
+    channels: [...$("d-channels").querySelectorAll("tbody tr")].map((tr) => { const i = tr.querySelectorAll("input"); return {name: i[0].value, detector: i[1].value, input: i[2].value, role: i[3].value}; })};
+  if (choice === "@new") out.new_readout = {name: $("r-name").value.trim(), pretrigger_samples: $("r-pre").value, glitch_samples: $("r-glitch").value,
+    sample_period_s: $("r-period").value.trim(), status: $("r-status").value, evidence: $("r-evidence").value.trim()};
+  return out;
+}
+async function detectorRun(kind) {
+  const msg = $("d-msg"); msg.textContent = ""; msg.className = ""; $("d-out").hidden = true;
+  try {
+    const form = detectorForm();
+    if (kind === "preview") {
+      const r = await api("/api/detector/preview", form);
+      $("d-out").textContent = r.text; $("d-out").hidden = false; msg.textContent = "This is what would be added to the registry."; msg.className = "good"; return;
+    }
+    const r = await api("/api/detector/add", form);
+    state = await api("/api/state"); drawDetectors(); $("detector").value = form.name; showDetector(); drawNewDetector();
+    msg.textContent = "Added: " + r.files.join(", "); msg.className = "good";
+    show("data");
+  } catch (e) { msg.textContent = e.message; msg.className = "bad"; }
+}
+
 // ---- the flow diagram: raw data -> steps -> quantities (RQ) -> output files
 function channelsOf(s) {
   const text = s.fields.channels.value.trim(), d = detector(), all = d ? d.channels : [];
@@ -367,7 +451,7 @@ async function scan() {
     $("roots").replaceChildren(...state.roots.map((r) => el("option", {value: r})));
     $("root").value = state.roots[0] || ""; $("folder").value = state.folder;
     $("newalg").replaceChildren(...state.algorithms.map((a) => el("option", {value: a.name, textContent: `${a.name} — ${a.kind === "trace" ? "filter" : a.outputs.join(", ")}`})));
-    drawDetectors();
+    drawDetectors(); drawNewDetector();
     if ($("root").value) scan();
   } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
@@ -377,6 +461,10 @@ async function scan() {
   $("addstep").addEventListener("click", addStep);
   $("detector").addEventListener("change", () => { showDetector(); });
   $("all").addEventListener("change", (e) => { document.querySelectorAll("#series tbody tr:not([hidden]) input[type=checkbox]").forEach((c) => { c.checked = e.target.checked; }); summary(); });
+  $("d-readout").addEventListener("change", () => { $("d-newreadout").hidden = $("d-readout").value !== "@new"; });
+  $("d-addchannel").addEventListener("click", () => channelRow());
+  $("d-preview").addEventListener("click", () => detectorRun("preview"));
+  $("d-add").addEventListener("click", () => detectorRun("add"));
   $("preview").addEventListener("click", () => run("preview"));
   $("write").addEventListener("click", () => run("write"));
 })();

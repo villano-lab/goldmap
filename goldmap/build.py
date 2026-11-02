@@ -129,3 +129,92 @@ def write(form: dict, folder) -> dict:
     except (ValueError, OSError) as e:
         problem = str(e)
     return {"definition": str(path), "metadata": str(meta) if meta else None, "files": files, "problem": problem}
+
+
+# ---- a detector for the registry
+
+def _number(value, name, kind=float):
+    if value in (None, ""):
+        raise ValueError(f"{name}: give a number")
+    try:
+        return kind(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name}: {value!r} is not a number") from None
+
+
+def _optional_int(value, name):
+    return None if value in (None, "") else _number(value, name, int)
+
+
+def detector_records(form: dict) -> tuple:
+    """``(detector, readout)`` from the detector form: each is ``(name, table)`` for `goldpan.registry`, the readout `None` when the detector uses one
+    that exists. The form: ``{"name", "number", "description", "status", "evidence", "series": [...], "readout": "<name>" or None,
+    "new_readout": {"name", "pretrigger_samples", "glitch_samples", "sample_period_s", "status", "evidence"} or None,
+    "channels": [{"name", "detector", "input", "role"}]}`` (the idx format: ``detector`` is the index of the board in the dump, ``input`` the channel on it)."""
+    name = (form.get("name") or "").strip()
+    if not name:
+        raise ValueError("give the detector a name")
+    readout = None
+    new = form.get("new_readout")
+    if new:
+        rname = (new.get("name") or "").strip()
+        if not rname:
+            raise ValueError("give the new readout a name")
+        table = {"pretrigger_samples": _number(new.get("pretrigger_samples"), "pretrigger_samples", int),
+                 "glitch_samples": _number(new.get("glitch_samples"), "glitch_samples", int),
+                 "sample_period_s": _number(new.get("sample_period_s"), "sample_period_s"),
+                 "status": new.get("status") or "", "evidence": (new.get("evidence") or "").strip()}
+        readout = (rname, table)
+        readout_name = rname
+    else:
+        readout_name = form.get("readout") or None
+    table = {}
+    for key in ("number", "type_code", "tower", "plane"):
+        value = _optional_int(form.get(key), key)
+        if value is not None:
+            table[key] = value
+    if readout_name:
+        table["readout"] = readout_name
+    table["status"] = form.get("status") or ""
+    table["evidence"] = (form.get("evidence") or "").strip()
+    if (form.get("description") or "").strip():
+        table["description"] = form["description"].strip()
+    if form.get("series"):
+        table["series"] = [s.strip() for s in form["series"] if s.strip()]
+    channels = [c for c in form.get("channels", []) if (c.get("name") or "").strip()]
+    if channels:
+        names = [c["name"].strip() for c in channels]
+        if len(set(names)) != len(names):
+            raise ValueError("a channel name is used twice")
+        table["idx"] = {"channels": {c["name"].strip(): [_number(c.get("detector"), f"{c['name']}: detector", int), _number(c.get("input"), f"{c['name']}: input", int)]
+                                     for c in channels},
+                        "roles": {c["name"].strip(): (c.get("role") or "").strip() for c in channels if (c.get("role") or "").strip()}}
+        if not table["idx"]["roles"]:
+            del table["idx"]["roles"]
+    return (name, table), readout
+
+
+def detector_preview(form: dict) -> str:
+    """The text that would be added to the registry (the readout first, when the form makes one), checked by goldpan."""
+    from goldpan import registry
+    detector, readout = detector_records(form)
+    parts = ([registry.record_text("readouts", *readout)] if readout else []) + [registry.record_text("detectors", *detector)]
+    return "\n".join(parts)
+
+
+def detector_add(form: dict, folder) -> dict:
+    """Add the detector (and its new readout) to the registry folder `folder`. Nothing is written unless both are accepted: the names are checked
+    against the folder first. Returns ``{"files": [the files written]}``."""
+    from goldpan import registry
+    detector, readout = detector_records(form)
+    detector_preview(form)                                              # goldpan's own checks, before anything is written
+    reg = registry.load(Path(folder).expanduser(), use_environment=False) if Path(folder).expanduser().is_dir() else registry.Registry()
+    if detector[0] in reg.detectors():
+        raise ValueError(f"the registry already has a detector named {detector[0]!r}")
+    if readout and readout[0] in reg.readouts():
+        raise ValueError(f"the registry already has a readout named {readout[0]!r}")
+    files = []
+    if readout:
+        files.append(str(registry.add_record(folder, "readouts", *readout)))
+    files.append(str(registry.add_record(folder, "detectors", *detector)))
+    return {"files": files}
