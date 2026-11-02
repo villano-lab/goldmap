@@ -95,6 +95,8 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
                     return self._json(200, {"series": catalog.scan(root)})
             except (ValueError, OSError, KeyError) as e:
                 return self._json(400, {"error": str(e)})
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
             self._json(404, {"error": "no such address"})
 
         def do_POST(self):
@@ -112,12 +114,16 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
                     if target not in config.targets():
                         return self._json(400, {"error": f"a detector can only be added to {config.targets()}"})
                     return self._json(200, build.detector_add(form, target))
+                if self.path == "/api/validate":
+                    return self._json(200, build.validate(form, folder))
                 if self.path == "/api/preview":
                     return self._json(200, {"text": build.preview(form, folder)})
                 if self.path == "/api/write":
                     return self._json(200, build.write(form, folder))
             except (ValueError, OSError, KeyError, TypeError) as e:
                 return self._json(400, {"error": str(e)})
+            except Exception as e:                                       # a bug, or a library that is too old: say so instead of dropping the connection
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
             self._json(404, {"error": "no such address"})
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)

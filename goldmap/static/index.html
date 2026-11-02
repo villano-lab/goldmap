@@ -163,7 +163,7 @@
       <label for="folder">Write the files into</label><input id="folder" type="text">
       <label for="description">Description</label><input id="description" type="text" placeholder="What this processing is for" data-suggest="no">
     </details>
-    <div class="actions"><button data-go="steps">Back</button><div><button id="preview">Preview</button><button id="write" class="primary">Write and check</button></div></div>
+    <div class="actions"><button data-go="steps">Back</button><div><button id="validate" title="Run goldsluice check on this definition without writing any file">Validate</button><button id="preview">Preview</button><button id="write" class="primary">Write and check</button></div></div>
     <p id="msg"></p>
     <pre id="out" hidden></pre>
   </section>
@@ -563,6 +563,11 @@ async function run(kind) {
   $("out").hidden = true;
   try {
     const result = await api("/api/" + kind, form());
+    if (kind === "validate") {
+      if (result.ok) say(`Valid. goldsluice check found ${result.files} raw file(s) for ${result.series} series, and ${result.steps} step${result.steps === 1 ? "" : "s"} will run. Nothing was written.`, "good");
+      else say(`Not valid yet: ${result.problem}`, "bad");
+      return;
+    }
     if (kind === "preview") { $("out").textContent = result.text; $("out").hidden = false; say("This is what would be written.", "good"); return; }
     const lines = [`Wrote ${result.definition}`].concat(result.metadata ? [`Wrote ${result.metadata}`] : []);
     if (result.problem) { say(`Written, but the check says: ${result.problem}`, "bad"); } else { say(`Written. goldsluice check found ${result.files.length} raw file(s).`, "good"); }
@@ -670,6 +675,7 @@ async function detectorRun(kind) {
   $("d-channels").addEventListener("input", suggestDetector);
   $("d-preview").addEventListener("click", () => detectorRun("preview"));
   $("d-add").addEventListener("click", () => detectorRun("add"));
+  $("validate").addEventListener("click", () => run("validate"));
   $("preview").addEventListener("click", () => run("preview"));
   $("write").addEventListener("click", () => run("write"));
   drawGraph();

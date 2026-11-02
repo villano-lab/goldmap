@@ -23,7 +23,7 @@ The page opens in your browser (the address is also printed). The page has three
 2. **Steps:** the processing as boxes on a canvas. Add a step, drag it where you like, click it to set its parameters (the ones that belong to the readout are taken
    from it). Drag from a filter's right-hand dot onto a step to make that step read the filtered trace (double-click the line to undo). The green boxes show the
    quantities that end up in the output.
-3. **Files:** name the dataset and its output folder, check the metadata of each series, then **Preview** or **Write and check**. The last line it prints is the
+3. **Files:** name the dataset and its output folder, check the metadata of each series, then **Validate** (runs `goldsluice check` on the definition and writes nothing), **Preview** or **Write and check**. The last line it prints is the
    `goldsluice run` command.
 
 In an empty box, **Tab** fills in the grey suggestion.

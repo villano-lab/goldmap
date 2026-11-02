@@ -12,6 +12,7 @@ The form is plain JSON (what the page sends)::
 `goldpan.dataset` writes and checks the definition and `goldpan.runmeta` the table; nothing here knows the rules of either.
 """
 import os
+import tempfile
 from pathlib import Path
 
 from goldpan import dataset, runmeta
@@ -26,9 +27,11 @@ def _posix(path) -> str:
     return str(path).replace("\\", "/")
 
 
-def _registry_path(folder: Path, registry: str) -> str:
+def _registry_path(folder: Path, registry: str, absolute: bool = False) -> str:
     """The registry folder as the definition writes it: relative to the folder of the definition when that is possible, else as given."""
     given = Path(registry).expanduser()
+    if absolute:
+        return _posix(given.resolve())
     try:
         relative = _posix(os.path.relpath(given, folder))
     except ValueError:                                                  # another drive (Windows)
@@ -61,8 +64,9 @@ def _step(form_step: dict, index: int) -> dict:
     return out
 
 
-def definition(form: dict, folder) -> dict:
-    """The dataset definition (a mapping with the layout of the file, for `goldpan.dataset.dumps`) that the form describes, for a file in `folder`."""
+def definition(form: dict, folder, absolute: bool = False) -> dict:
+    """The dataset definition (a mapping with the layout of the file, for `goldpan.dataset.dumps`) that the form describes, for a file in `folder`.
+    With `absolute` the registry folders are written in full, for a definition that is not going to stay in `folder`."""
     folder = Path(folder).expanduser().resolve()
     if not form.get("name") or not form.get("output"):
         raise ValueError("give the dataset a name and an output folder")
@@ -70,7 +74,7 @@ def definition(form: dict, folder) -> dict:
     if form.get("description"):
         head["description"] = form["description"]
     if form.get("registry"):
-        head["registry"] = [_registry_path(folder, r) for r in form["registry"]]
+        head["registry"] = [_registry_path(folder, r, absolute) for r in form["registry"]]
     if form.get("metadata"):
         head["metadata"] = METADATA_FILE
     if not form.get("sources"):
@@ -104,6 +108,29 @@ def header(form: dict) -> str:
 def preview(form: dict, folder) -> str:
     """The text of the definition file, checked by goldpan; `ValueError` says what is wrong."""
     return dataset.dumps(definition(form, folder), base=folder, header=header(form))
+
+
+def validate(form: dict, folder=None) -> dict:
+    """Check the form without writing anything into the user's folders: the definition is made in a temporary folder (with the registry folders in full),
+    goldpan checks it as it does when it loads a file, and goldsluice's `check` looks for the raw files and for an output folder inside a repository.
+    Returns ``{"ok", "files", "series", "steps", "problem"}``; `ValueError` when the form itself is refused by goldpan."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        if form.get("metadata_rows"):
+            form = {**form, "metadata": True}
+        spec = definition(form, tmp, absolute=True)
+        text = dataset.dumps(spec, base=tmp)
+        if form.get("metadata_rows"):
+            runmeta.write_table(tmp / METADATA_FILE, table(form["metadata_rows"]))
+        path = tmp / "validate.dataset.toml"
+        path.write_text(text, encoding="utf-8", newline="\n")
+        files, problem = [], None
+        try:
+            from goldsluice import batch
+            files = batch.check(path, allow_output_in_repo=False)
+        except (ValueError, OSError) as e:
+            problem = str(e)
+    return {"ok": problem is None, "files": len(files), "series": len(form["sources"][0]["series"]), "steps": len(form.get("steps", [])), "problem": problem}
 
 
 def write(form: dict, folder) -> dict:
@@ -194,9 +221,17 @@ def detector_records(form: dict) -> tuple:
     return (name, table), readout
 
 
+def _registry_module():
+    from goldpan import registry
+    if not hasattr(registry, "add_record"):
+        raise ValueError("this goldpan is too old to add a detector (goldpan.registry.add_record came with NSDF-Data pull request 200): "
+                         f"update the NSDF-Data checkout that {registry.__file__} belongs to (merge develop into its branch), then start goldmap again")
+    return registry
+
+
 def detector_preview(form: dict) -> str:
     """The text that would be added to the registry (the readout first, when the form makes one), checked by goldpan."""
-    from goldpan import registry
+    registry = _registry_module()
     detector, readout = detector_records(form)
     parts = ([registry.record_text("readouts", *readout)] if readout else []) + [registry.record_text("detectors", *detector)]
     return "\n".join(parts)
@@ -205,7 +240,7 @@ def detector_preview(form: dict) -> str:
 def detector_add(form: dict, folder) -> dict:
     """Add the detector (and its new readout) to the registry folder `folder`. Nothing is written unless both are accepted: the names are checked
     against the folder first. Returns ``{"files": [the files written]}``."""
-    from goldpan import registry
+    registry = _registry_module()
     detector, readout = detector_records(form)
     detector_preview(form)                                              # goldpan's own checks, before anything is written
     reg = registry.load(Path(folder).expanduser(), use_environment=False) if Path(folder).expanduser().is_dir() else registry.Registry()
