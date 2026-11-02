@@ -11,14 +11,14 @@
           --raw:#243a52; --step:#4a3d17; --trace:#3a3052; --out:#254a2a; --edge:#7d7a6c; } }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
-  main { max-width:900px; margin:0 auto; padding:20px 16px 60px; }
+  main { max-width:900px; margin:0 auto; padding:20px 16px 60px; } main.wide { max-width:1280px; }
   header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
   h1 { font-size:1.35rem; margin:0; font-weight:600; } h1 span { color:var(--accent); }
   nav { display:flex; gap:4px; margin:14px 0 6px; border-bottom:1px solid var(--line); overflow-x:auto; }
   nav button { border:0; border-bottom:2px solid transparent; background:none; padding:8px 14px; color:var(--muted); cursor:pointer; font:inherit; border-radius:0; white-space:nowrap; text-align:left; }
   nav button[aria-current=true] { color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
   nav small { display:block; font-weight:400; color:var(--muted); font-size:.74rem; }
-  .guide { color:var(--muted); margin:10px 0 4px; }
+  .guide { color:var(--muted); margin:10px 0 4px; max-width:64em; }
   section[hidden] { display:none; }
   label { display:block; font-size:.82rem; color:var(--muted); margin:12px 0 3px; }
   input, select, textarea, button { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 9px; }
@@ -41,7 +41,8 @@
   details { margin-top:10px; } summary { cursor:pointer; color:var(--muted); font-size:.85rem; }
   pre { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; font-size:.78rem; max-height:360px; }
   .hint { padding:14px 0; color:var(--muted); }
-  #graph { width:100%; height:auto; background:var(--card); border:1px solid var(--line); border-radius:8px; margin-top:10px; touch-action:none; user-select:none; }
+  #canvas { margin-top:10px; height:600px; min-height:300px; overflow:auto; resize:vertical; background:var(--card); border:1px solid var(--line); border-radius:8px; }
+  #graph { display:block; width:100%; touch-action:none; user-select:none; }
   #graph .box { stroke:var(--edge); stroke-width:1; } #graph g.node { cursor:grab; } #graph g.node.fixed { cursor:pointer; } #graph g.node:hover .box { stroke:var(--accent); stroke-width:2; }
   #graph g.node.selected .box { stroke:var(--accent); stroke-width:3; }
   #graph .raw { fill:var(--raw); } #graph .step { fill:var(--step); } #graph .trace { fill:var(--trace); } #graph .out { fill:var(--out); } #graph .clash { stroke:var(--bad); stroke-width:2; }
@@ -50,10 +51,22 @@
   #graph path.edge.linking { stroke:var(--accent); stroke-dasharray:5 4; } #graph marker path { fill:var(--edge); stroke:none; }
   #graph circle.port { fill:var(--card); stroke:var(--edge); stroke-width:1.5; } #graph circle.port.out { cursor:crosshair; } #graph circle.port:hover { stroke:var(--accent); fill:var(--accent); }
   .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:.8rem; color:var(--muted); margin-top:6px; } .legend i { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:5px; vertical-align:-1px; border:1px solid var(--edge); }
+  .tag { display:inline-block; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:1px 7px; border-radius:4px; border:1px solid var(--edge); color:var(--fg); vertical-align:1px; }
+  .tag.t-raw { background:var(--raw); } .tag.t-step { background:var(--step); } .tag.t-filter { background:var(--trace); } .tag.t-out { background:var(--out); }
+  .pick { position:relative; } .pick > button { width:100%; text-align:left; display:flex; gap:8px; align-items:center; }
+  .pick .caret { margin-left:auto; color:var(--muted); } #picklabel { display:flex; gap:8px; align-items:center; min-width:0; }
+  #picklist { position:absolute; z-index:5; left:0; right:0; top:calc(100% + 2px); max-height:340px; overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.18); }
+  #picklist h4 { margin:0; padding:6px 10px 2px; font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  #picklist .opt { display:flex; gap:8px; align-items:center; padding:6px 10px; cursor:pointer; border-left:4px solid transparent; }
+  #picklist .opt.k-filter { background:var(--trace); border-left-color:var(--edge); } #picklist .opt.k-filter b { font-weight:700; }
+  #picklist .opt.k-step { background:var(--step); border-left-color:var(--edge); }
+  #picklist .opt:hover, #picklist .opt[aria-selected=true] { outline:2px solid var(--accent); outline-offset:-2px; }
+  #picklist .opt .muted { margin-left:auto; text-align:right; }
+  #graph text.tagtext { fill:var(--fg); font:700 10px system-ui, sans-serif; letter-spacing:.06em; opacity:.7; }
 </style>
 </head>
 <body>
-<main>
+<main id="main">
   <header><h1><span>gold</span>map</h1><span class="muted">lay out a processing, step by step</span></header>
   <nav id="tabs">
     <button data-tab="data" aria-current="true">1 · Data<small id="t-data">choose series</small></button>
@@ -88,9 +101,9 @@
 
   <section id="steps" hidden>
     <p class="guide">Build the processing as boxes. Add a step and drag it where you like; click a box to set its parameters. To make a step read a filter's result, drag from the filter's right-hand dot onto that step (double-click a line to undo). Steps run left to right through the lines; the green boxes are the quantities that end up in the output files.</p>
-    <div class="row"><div><label for="newalg" style="margin-top:0">Add a step</label><select id="newalg"></select></div><button id="addstep" class="primary">Add</button></div>
-    <svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg>
-    <div class="legend"><span><i style="background:var(--raw)"></i>raw data</span><span><i style="background:var(--step)"></i>step that gives quantities</span><span><i style="background:var(--trace)"></i>filter (gives a trace)</span><span><i style="background:var(--out)"></i>output (RQ)</span></div>
+    <div class="row"><div><label style="margin-top:0">Add a step</label><div class="pick"><button type="button" id="pickbtn" aria-haspopup="listbox"><span id="picklabel"></span><span class="caret">▾</span></button><div id="picklist" role="listbox" hidden></div></div></div><button id="addstep" class="primary">Add</button></div>
+    <div id="canvas"><svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div class="legend"><span><span class="tag t-raw">raw data</span> the series and the detector</span><span><span class="tag t-filter">filter</span> gives a filtered trace for another step</span><span><span class="tag t-step">step</span> gives quantities</span><span><span class="tag t-out">output</span> what is written (RQ)</span><span>drag the bottom edge of the canvas to make it taller</span></div>
     <p class="muted" id="flowmsg"></p>
     <div id="stepdetail"><p class="hint" id="nosteps">No steps yet. Pick an algorithm above and press Add.</p></div>
     <div class="actions"><button data-go="data">Back</button><button class="primary" data-go="files">Next: files</button></div>
@@ -180,6 +193,7 @@ const fmt = (v) => (v === null || v === undefined ? "" : v);
 
 function show(tab) {
   ["data", "steps", "files", "newdet"].forEach((t) => { $(t).hidden = t !== tab; });
+  $("main").classList.toggle("wide", tab === "steps");
   document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-current", b.dataset.tab === tab));
   if (tab === "steps") drawGraph();
   if (tab === "files") { drawMeta(); suggestFiles(); }
@@ -281,8 +295,31 @@ function showDetector() {
 }
 
 // ---- 2. the steps: boxes on a canvas
-const VIEW_W = 1100, W = 170, STEP_H = 54, RAW_X = 12, STEPS_X0 = 250, OUT_GAP = 36;
+let picked = null;
+function tag(kind, text) { return el("span", {className: "tag t-" + kind, textContent: text || kind}); }
+function choosePick(name) {
+  picked = name;
+  const a = state.algorithms.find((x) => x.name === name);
+  $("picklabel").replaceChildren(...(a ? [tag(a.kind === "trace" ? "filter" : "step"), el("b", {textContent: a.name}), el("span", {className: "muted", textContent: a.kind === "trace" ? "gives a filtered trace" : a.outputs.join(", ")})] : [el("span", {className: "muted", textContent: "choose an algorithm"})]));
+  $("picklist").hidden = true;
+  [...$("picklist").querySelectorAll(".opt")].forEach((o) => o.setAttribute("aria-selected", String(o.dataset.name === name)));
+}
+function buildPicker() {
+  const list = $("picklist"); list.replaceChildren();
+  [["filter", "Filters: give a filtered trace for later steps", (a) => a.kind === "trace"], ["step", "Steps: give quantities", (a) => a.kind !== "trace"]].forEach(([kind, title, test]) => {
+    const group = state.algorithms.filter(test); if (!group.length) return;
+    list.append(el("h4", {textContent: title}));
+    group.forEach((a) => {
+      const opt = el("div", {className: "opt k-" + kind, role: "option"}, tag(kind), el("b", {textContent: a.name}), el("span", {className: "muted", textContent: kind === "filter" ? a.summary.replace(/^Python mirror of `[^`]*`: /, "").split(" (")[0].slice(0, 80) : a.outputs.join(", ")}));
+      opt.dataset.name = a.name; opt.addEventListener("click", () => choosePick(a.name)); opt.addEventListener("dblclick", () => { choosePick(a.name); addStep(); });
+      list.append(opt);
+    });
+  });
+  choosePick(state.algorithms.length ? state.algorithms[0].name : null);
+}
+const VIEW_W = 1280, W = 190, STEP_H = 60, RAW_X = 12, STEPS_X0 = 250, OUT_GAP = 36;
 const FILES_X = VIEW_W - W - 12;
+const TAGS = {raw: "RAW DATA", step: "STEP", trace: "FILTER", out: "OUTPUT"};
 const SUGGEST = {order: "4", fraction: "0.2"};         // grey suggestions for parameters that have an ordinary value; Tab fills them in
 const byId = (id) => steps.find((s) => s.id === id) || null;
 const isTrace = (s) => s.kind === "trace";
@@ -306,14 +343,14 @@ function wrap(text, width) {                         // break a long list into l
 function suffixOf(s) { return s.fields.suffix ? s.fields.suffix.value.trim() : ""; }
 
 function addStep() {
-  const alg = state.algorithms.find((a) => a.name === $("newalg").value);
+  const alg = state.algorithms.find((a) => a.name === picked);
   if (!alg) return;
   $("nosteps").hidden = true;
   const record = {id: ++stepCount, algorithm: alg.name, kind: alg.kind, outputs: alg.outputs, input: null, fields: {}, alg};
   const box = el("div", {className: "step"});
   const remove = el("button", {textContent: "Remove this step", type: "button", className: "link"});
   const result = alg.kind === "trace" ? "gives a filtered trace" : alg.outputs.join(", ");
-  box.append(el("header", {className: "row"}, el("h3", {}, `${record.id}. ${alg.name} `, el("small", {textContent: "→ " + result})), remove));
+  box.append(el("header", {className: "row"}, el("h3", {}, tag(alg.kind === "trace" ? "filter" : "step"), ` ${record.id}. ${alg.name} `, el("small", {textContent: "→ " + result})), remove));
   if (alg.summary) box.append(el("p", {className: "muted", textContent: alg.summary, style: "margin:2px 0 0"}));
   const grid = el("div", {className: "grid"});
   const ch = el("input", {type: "text", value: "role:phonon"}); record.fields.channels = ch; ch.addEventListener("input", drawGraph);
@@ -377,6 +414,7 @@ function refreshReads(rec) {
 }
 
 function drawGraph() {
+  const canvas = $("canvas"); if (!canvas.clientWidth) return;             // the tab is not shown
   const root = $("graph"); root.replaceChildren();
   const names = chosen(), d = detector();
   const dumps = series.filter((s) => names.includes(s.series)).reduce((n, s) => n + s.dumps, 0);
@@ -399,8 +437,10 @@ function drawGraph() {
   outs.forEach((n) => edges.push([n.id, "files"]));
   if (!steps.length) edges.push(["raw", "files"]);
   nodes.forEach((n) => { n.h = n.kind === "out" || n.kind === "raw" ? 30 + n.lines.length * 16 : STEP_H; });
-  const height = Math.max(240, ...nodes.map((n) => n.y + n.h + 20));
+  const scale = canvas.clientWidth / VIEW_W;
+  const height = Math.max(canvas.clientHeight / scale, ...nodes.map((n) => n.y + n.h + 24));       // fills the canvas, grows with what is on it
   root.setAttribute("viewBox", `0 0 ${VIEW_W} ${height}`);
+  root.style.height = `${Math.ceil(height * scale)}px`;
   const defs = svg("defs"), marker = svg("marker", {id: "arrow", viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse"});
   marker.append(svg("path", {d: "M0,0 L10,5 L0,10 z"})); defs.append(marker); root.append(defs);
   const index = Object.fromEntries(nodes.map((n) => [n.id, n]));
@@ -415,6 +455,7 @@ function drawGraph() {
     const g = svg("g", {class: "node" + (n.fixed ? " fixed" : "") + (n.step && selected === n.step.id && !n.fixed ? " selected" : "")});
     g.append(svg("rect", {x: n.x, y: n.y, width: n.w, height: n.h, rx: 7, class: `box ${n.kind}` + (clashes.has(n.id) ? " clash" : "")}));
     g.append(svg("text", {x: n.x + 10, y: n.y + 20}, n.title));
+    g.append(svg("text", {x: n.x + n.w - 8, y: n.y + 16, class: "tagtext", "text-anchor": "end"}, TAGS[n.kind]));
     n.lines.forEach((l, i) => g.append(svg("text", {x: n.x + 10, y: n.y + 38 + i * 16, class: "sub"}, l)));
     if (n.step && !n.fixed) {
       const s = n.step, cy = n.y + n.h / 2;
@@ -454,7 +495,7 @@ function onMove(e) {
   if (drag) {
     const p = svgPoint(e);
     if (Math.abs(p.x - drag.x0) + Math.abs(p.y - drag.y0) > 3) drag.moved = true;
-    if (drag.moved) { drag.s.x = Math.max(RAW_X + W + 20, Math.min(FILES_X - 2 * W - OUT_GAP - 20, p.x - drag.dx)); drag.s.y = Math.max(8, p.y - drag.dy); drawGraph(); }
+    if (drag.moved) { drag.s.x = Math.max(RAW_X + W + 20, Math.min(FILES_X - (isTrace(drag.s) ? W : 2 * W + OUT_GAP) - 20, p.x - drag.dx)); drag.s.y = Math.max(8, p.y - drag.dy); drawGraph(); }
   } else if (link) {
     const p = svgPoint(e), from = graphIndex["s" + link.from.id];
     const old = document.querySelector("#graph path.linking"); if (old) old.remove();
@@ -598,7 +639,7 @@ async function detectorRun(kind) {
     state = await api("/api/state");
     $("roots").replaceChildren(...state.roots.map((r) => el("option", {value: r})));
     $("root").value = state.roots[0] || ""; $("folder").value = state.folder;
-    $("newalg").replaceChildren(...state.algorithms.map((a) => el("option", {value: a.name, textContent: `${a.name} — ${a.kind === "trace" ? "filter" : a.outputs.join(", ")}`})));
+    buildPicker();
     drawDetectors(); drawNewDetector();
     if ($("root").value) scan();
   } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
@@ -609,6 +650,10 @@ async function detectorRun(kind) {
   ["f-trigger", "f-type", "f-shield"].forEach((id) => $(id).addEventListener("change", applyFilter));
   $("clearfilters").addEventListener("click", clearFilters);
   $("addstep").addEventListener("click", addStep);
+  $("pickbtn").addEventListener("click", () => { $("picklist").hidden = !$("picklist").hidden; });
+  document.addEventListener("click", (e) => { if (!e.target.closest(".pick")) $("picklist").hidden = true; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("picklist").hidden = true; });
+  let frame = 0; new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(drawGraph); }).observe($("canvas"));
   $("detector").addEventListener("change", () => { showDetector(); drawGraph(); });
   $("all").addEventListener("change", (e) => { document.querySelectorAll("#series tbody tr:not([hidden]) input[type=checkbox]").forEach((c) => { c.checked = e.target.checked; }); summary(); });
   $("graph").addEventListener("pointermove", onMove);
