@@ -93,6 +93,10 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
                 if url.path == "/api/scan":
                     root = parse_qs(url.query).get("root", [""])[0]
                     return self._json(200, {"series": catalog.scan(root)})
+                if url.path == "/api/definitions":                     # the definitions in the folder files are written to, to open one
+                    folder = Path(config.folder).expanduser()
+                    found = sorted(folder.glob("*.dataset.toml")) if folder.is_dir() else []
+                    return self._json(200, {"definitions": [str(p.resolve()) for p in found]})        # in full: Open takes a relative path from `folder`
             except (ValueError, OSError, KeyError) as e:
                 return self._json(400, {"error": str(e)})
             except Exception as e:
@@ -120,6 +124,14 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
                     return self._json(200, {"text": build.preview(form, folder)})
                 if self.path == "/api/write":
                     return self._json(200, build.write(form, folder))
+                if self.path == "/api/open":                           # a relative path is taken from the folder files are written to
+                    path = Path(form.get("path") or "").expanduser()
+                    if not str(form.get("path") or "").strip():
+                        return self._json(400, {"error": "give the path of a .dataset.toml file"})
+                    path = path if path.is_absolute() else Path(config.folder).expanduser() / path
+                    if not path.is_file():
+                        return self._json(400, {"error": f"{path}: no such file"})
+                    return self._json(200, build.open_definition(path, config.registries()))
             except (ValueError, OSError, KeyError, TypeError) as e:
                 return self._json(400, {"error": str(e)})
             except Exception as e:                                       # a bug, or a library that is too old: say so instead of dropping the connection

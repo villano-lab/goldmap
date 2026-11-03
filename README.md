@@ -39,6 +39,21 @@ The page opens in your browser (the address is also printed). The page has three
 
 In an empty box, **Tab** fills in the grey suggestion.
 
+**Start from an existing definition**, at the top of the Data tab, opens a `.dataset.toml` (the ones in `--folder` are listed; any other path works too)
+and fills the three tabs from it: its sources and series, its steps with their parameters and links, its run metadata and its names. Change what you
+need, give it a new name on the Files tab and write it; writing it under the old name replaces the file you opened. goldpan loads the file first, so
+one it refuses does not open.
+
+- The series of a source are found on the disk from its `paths` or `glob`, so a `glob` over many series opens as the series it matches. A pattern
+  that matches nothing on this computer is reported, and its series stay chosen when the pattern names them.
+- A registry the definition names that goldmap was not started with is reported (start goldmap with `--registry` for it).
+- Columns of the run metadata that the page does not show (`dumps_in_output`, `from`, ...) are kept and written back as they were.
+- A definition goldmap cannot represent is refused with the reason: a source that sets its own `readout` or `read` (goldmap takes those from the
+  registry), a format other than idx, dumps of one source in several folders, or an algorithm or parameter the installed goldsluice does not have.
+
+Several definitions in one folder share its `series.csv`, so writing one keeps the rows of the other series already in the file and replaces only the
+rows of the series it chose.
+
 | Option | |
 |---|---|
 | `--registry DIR` | folder of detector records (`goldpan.registry`); repeat for several; `GOLDPAN_REGISTRY` is used too |

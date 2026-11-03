@@ -84,6 +84,12 @@
 
   <section id="data">
     <p class="guide">Start with the raw data: which folder holds the dumps, which series to process, and which detector took them. Raw data from different detectors (or different folders) are separate sources: add one with <em>+ Add a source</em>; the steps then run on all of them. Tip: in an empty box, press Tab to fill in the grey suggestion.</p>
+    <details id="openbox"><summary>Start from an existing definition</summary>
+      <label for="openpath">A <code>.dataset.toml</code> file (those in the folder files are written to are listed; any other path works too)</label>
+      <div class="row"><input id="openpath" type="text" list="defs" autocomplete="off" data-suggest="no"><datalist id="defs"></datalist><button id="open">Open</button></div>
+      <p class="muted">Its sources, steps, run metadata and names fill the three tabs. Change what you need and give it a new name on the Files tab: writing it under the same name replaces the file you opened.</p>
+    </details>
+    <p class="muted" id="openmsg"></p>
     <div id="sourcebar" class="chips"></div>
     <label for="root">Folder of the raw dumps</label>
     <div class="row"><input id="root" type="text" list="roots" autocomplete="off"><datalist id="roots"></datalist><button id="scan">Look for series</button></div>
@@ -332,12 +338,13 @@ function clearFilters() {
 }
 
 const META = ["hv_v", "trigger", "trigger_value", "type", "source_shield", "duration_min"];
+let opened = {};                                       // series -> its row of the run metadata of an opened definition (it wins over the series list)
 function drawMeta() {
   const keep = {};
   document.querySelectorAll("#meta tbody tr").forEach((tr) => { keep[tr.dataset.series] = [...tr.querySelectorAll("input")].map((i) => i.value); });
   const body = $("meta").querySelector("tbody"); body.replaceChildren();
   chosen().forEach((name) => {
-    const f = state.facts[name] || {};
+    const f = opened[name] || state.facts[name] || {};
     const tr = el("tr"); tr.dataset.series = name; tr.append(el("td", {textContent: name}));
     META.forEach((c, i) => tr.append(el("td", {}, el("input", {type: "text", value: keep[name] ? keep[name][i] : fmt(f[c])}))));
     body.append(tr);
@@ -704,6 +711,7 @@ function form() {
   const rows = [...document.querySelectorAll("#meta tbody tr")].map((tr) => {
     const row = {series: tr.dataset.series};
     [...tr.querySelectorAll("input")].forEach((i, k) => { if (i.value.trim() !== "") row[META[k]] = i.value.trim(); });
+    Object.entries(opened[tr.dataset.series] || {}).forEach(([c, v]) => { if (!META.includes(c) && c !== "series") row[c] = v; });     // columns the page does not show, kept as they were
     return row;
   });
   const dets = new Set(sources.map((s) => s.detector).filter(Boolean));
@@ -753,6 +761,57 @@ async function scan() {
     $("scanmsg").textContent = `${src.series.length} series, ${src.series.reduce((n, s) => n + s.dumps, 0)} dumps.`;
     drawSeries();
   } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
+}
+
+// ---- start from an existing definition
+async function listDefinitions() {
+  try { $("defs").replaceChildren(...(await api("/api/definitions")).definitions.map((p) => el("option", {value: p}))); } catch (e) { /* the list is only a help */ }
+}
+async function openDefinition() {
+  const msg = $("openmsg"); msg.textContent = "Opening…"; msg.className = "muted";
+  let result;
+  try { result = await api("/api/open", {path: $("openpath").value.trim()}); } catch (e) { msg.textContent = e.message; msg.className = "muted bad"; return; }
+  const f = result.form, notes = [...result.notes];
+  steps.forEach((s) => s.box.remove()); steps = []; selected = null; $("nosteps").hidden = false;     // the page starts over from the file
+  regOn = new Set(f.registry); drawRegistries();
+  sources = f.sources.map((fs) => Object.assign(newSource(), {name: fs.name, root: fs.root, detector: fs.detector, picked: new Set(fs.series)}));
+  for (const src of sources) {
+    if (!liveDetectors().some((d) => d.name === src.detector)) notes.push(`source ${src.name}: the detector ${src.detector} is not in the registries goldmap has ticked`);
+    if (!src.root) continue;
+    try { src.series = (await api("/api/scan?root=" + encodeURIComponent(src.root))).series; } catch (e) { notes.push(`source ${src.name}: ${e.message}`); }
+    const missing = [...src.picked].filter((name) => !src.series.some((s) => s.series === name));
+    if (missing.length) notes.push(`source ${src.name}: ${missing.length} series not found in ${src.root} (${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ", …" : ""}); they stay chosen`);
+    missing.forEach((name) => src.series.push({series: name, dumps: 0, first: null, last: null}));
+  }
+  const byName = {}, children = {};
+  f.steps.forEach((fs) => {
+    choosePick(fs.algorithm); addStep();
+    const rec = steps[steps.length - 1];
+    rec.fields.channels.value = Array.isArray(fs.channels) ? fs.channels.join(", ") : (fs.channels || "all");
+    Object.entries(fs.params || {}).forEach(([name, value]) => {
+      const field = rec.fields[name]; if (!field) return;
+      const fromReadout = typeof value === "string" && value.startsWith("@readout.");
+      if (field.mode) { field.mode.value = fromReadout ? "readout" : "number"; field.input.hidden = fromReadout; }
+      if (!fromReadout) field.input.value = value;
+    });
+    if (fs.name && rec.fields.name) { rec.fields.name.value = fs.name; byName[fs.name] = rec; }
+    if (fs.suffix && rec.fields.suffix) rec.fields.suffix.value = fs.suffix;
+    if (fs.input && byName[fs.input]) {                                             // to the right of the filter it reads, one under the other
+      const parent = byName[fs.input], k = children[parent.id] = (children[parent.id] || 0) + 1;
+      rec.input = parent.id; rec.x = parent.x + W + 40; rec.y = parent.y + (k - 1) * (STEP_H + 60);
+    }
+    if (fs.sources) rec.only = new Set(sources.filter((src) => fs.sources.includes(src.name)).map((src) => src.id));
+  });
+  opened = Object.fromEntries((f.metadata_rows || []).map((r) => [r.series, r]));
+  $("meta").querySelector("tbody").replaceChildren();
+  $("usemeta").checked = !!f.metadata_rows;
+  $("name").value = f.name; $("output").value = f.output; $("description").value = f.description || ""; $("folder").value = f.folder;
+  $("o-format").value = f.output_format || "parquet"; $("o-root").value = f.root_detector === undefined ? "" : f.root_detector;
+  loadSource(sources[0]); selectStep(steps.length ? steps[0].id : null); suggestFiles();
+  msg.textContent = `Opened ${f.name}: ${sources.length} source${sources.length > 1 ? "s" : ""}, ${chosen().length} series, ${steps.length} step${steps.length === 1 ? "" : "s"}. Give it a new name on the Files tab before you write it.`
+    + (notes.length ? "  Note: " + notes.join(". ") + "." : "");
+  msg.className = notes.length ? "muted bad" : "muted good";
+  $("openbox").open = false;
 }
 
 // ---- a new detector for the registry
@@ -818,10 +877,13 @@ async function detectorRun(kind) {
     regOn = new Set(state.registry); drawRegistries();
     drawDetectors(); drawNewDetector(); drawSourceBar();
     if ($("root").value) scan();
+    listDefinitions();
   } catch (e) { $("scanmsg").textContent = e.message; $("scanmsg").className = "muted bad"; }
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => show(b.dataset.go)));
   $("scan").addEventListener("click", scan);
+  $("open").addEventListener("click", openDefinition);
+  $("openpath").addEventListener("keydown", (e) => { if (e.key === "Enter") openDefinition(); });
   ["filter", "f-hvmin", "f-hvmax", "f-dur"].forEach((id) => $(id).addEventListener("input", applyFilter));
   ["f-trigger", "f-type", "f-shield"].forEach((id) => $(id).addEventListener("change", applyFilter));
   $("clearfilters").addEventListener("click", clearFilters);

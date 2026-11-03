@@ -9,10 +9,14 @@ The form is plain JSON (what the page sends)::
                {"algorithm": "lowpass", "name": "lp", "channels": "role:phonon", "params": {...}}],
      "metadata": [{"series": "07221111_2153", "hv_v": -82.2, "trigger": "DCRC1pB 10", "trigger_value": 10}, ...]}
 
+`open_definition` goes the other way: an existing definition file -> the form, to start another processing from it.
 `goldpan.dataset` writes and checks the definition and `goldpan.runmeta` the table; nothing here knows the rules of either.
 """
+import glob as globmod
 import importlib.util
+import inspect
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -20,6 +24,8 @@ from goldpan import dataset, runmeta
 
 NUMERIC_COLUMNS = ("hv_v", "trigger_value", "duration_min")
 """Columns of the metadata table that are numbers; the others are text."""
+METADATA_COLUMNS = ("hv_v", "trigger", "trigger_value", "type", "source_shield", "duration_min")
+"""The columns of the metadata table the page shows, after `series` (its `META`)."""
 METADATA_FILE = "series.csv"
 """The file name of the metadata table, written beside the definition."""
 
@@ -94,11 +100,12 @@ def table(rows: list) -> dict:
     """The metadata table (``{column: values}``, `series` first) of the rows the form gives (``[{"series": ..., "hv_v": ...}, ...]``)."""
     if not rows:
         raise ValueError("the metadata table has no rows")
-    columns = ["series"] + sorted({k for r in rows for k in r if k != "series"})
+    columns = ["series"] + list(dict.fromkeys(k for r in rows for k in r if k != "series"))      # in the order they first appear
     out = {}
     for c in columns:
         values = [r.get(c) for r in rows]
-        if c in NUMERIC_COLUMNS:
+        given = [v for v in values if v not in (None, "")]
+        if c in NUMERIC_COLUMNS or (given and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in given)):    # a number column of an opened table stays one
             values = [None if v in (None, "") else float(v) for v in values]
         else:
             values = [None if v in (None, "") else str(v) for v in values]
@@ -106,6 +113,29 @@ def table(rows: list) -> dict:
             continue                                                    # a column nobody filled in is not written
         out[c] = values
     return out
+
+
+def _rows(columns: dict) -> list:
+    """A table (``{column: values}``, as `goldpan.runmeta.read_table` gives it) -> its rows, an empty cell (NaN or "") left out."""
+    rows = []
+    for k in range(len(columns["series"])):
+        row = {}
+        for c, values in columns.items():
+            v = values[k]
+            v = v.item() if hasattr(v, "item") else v
+            if not (v is None or v == "" or (isinstance(v, float) and v != v)):
+                row[c] = v
+        rows.append(row)
+    return rows
+
+
+def _merged(path: Path, rows: list) -> list:
+    """`rows`, after the rows of the other series in the metadata table already at `path`: several definitions in one folder share the file,
+    so writing one must not take away the series of the others. A series in `rows` replaces its old row."""
+    if not path.exists():
+        return rows
+    mine = {r["series"] for r in rows}
+    return [r for r in _rows(runmeta.read_table(path)) if r["series"] not in mine] + rows
 
 
 def header(form: dict) -> str:
@@ -155,7 +185,7 @@ def write(form: dict, folder) -> dict:
     meta = None
     if form.get("metadata_rows"):
         meta = folder / METADATA_FILE
-        runmeta.write_table(meta, table(form["metadata_rows"]))
+        runmeta.write_table(meta, table(_merged(meta, form["metadata_rows"])))
     path = folder / f"{form['name']}.dataset.toml"
     path.write_text(text, encoding="utf-8", newline="\n")
     files, problem = [], None
@@ -165,6 +195,91 @@ def write(form: dict, folder) -> dict:
     except (ValueError, OSError) as e:
         problem = str(e)
     return {"definition": str(path), "metadata": str(meta) if meta else None, "files": files, "problem": problem}
+
+
+# ---- an existing definition -> the form, to start another processing from it
+
+_DUMP = re.compile(r"^(\d{8}_\d{4})_F\d{4}$")
+_SERIES_IN_PATTERN = re.compile(r"(\d{8}_\d{4})_F")
+
+
+def _same_folder(a, b) -> bool:
+    try:
+        return Path(a).expanduser().resolve() == Path(b).expanduser().resolve()
+    except OSError:
+        return False
+
+
+def _open_source(raw: dict, source, notes: list) -> dict:
+    """One `[[sources]]` table -> a source of the form: the folder of its dumps and the series they belong to, found on the disk.
+    A pattern that matches nothing here (the data are on another computer) still gives its series when the pattern names them."""
+    for key in ("readout", "read"):
+        if key in raw:
+            raise ValueError(f"source {source.name!r} sets {key!r} in the file; goldmap takes the readout and the channels from the registry's detector "
+                             "and could not keep it. Edit this definition by hand, or move those into a registry record")
+    if source.format != "idx":
+        raise ValueError(f"source {source.name!r}: goldmap knows the idx format only, not {source.format!r}")
+    dumps, folders, missing = [], [], []
+    for pattern in source.patterns:
+        expanded = Path(pattern).expanduser()
+        expanded = expanded if expanded.is_absolute() else source.base / expanded
+        found = [Path(f) for f in sorted(globmod.glob(str(expanded)))] if any(ch in pattern for ch in "*?[") else ([expanded] if expanded.exists() else [])
+        found = [f for f in found if _DUMP.match(f.name)]
+        if found:
+            dumps += found
+        else:
+            missing.append(pattern)
+        folders.append(expanded.parent)
+    series = sorted({_DUMP.match(d.name).group(1) for d in dumps})
+    for pattern in missing:
+        named = _SERIES_IN_PATTERN.search(Path(pattern).name)
+        if named:
+            series = sorted(set(series) | {named.group(1)})
+        notes.append(f"source {source.name!r}: {pattern} matches no dump on this computer" + ("" if named else ", so its series are not known"))
+    roots = sorted({_posix(d.parent.resolve()) for d in dumps} or {_posix(f.resolve()) for f in folders})
+    if len(roots) > 1:
+        raise ValueError(f"source {source.name!r} reads dumps from several folders ({', '.join(roots)}); goldmap gives a source one folder: "
+                         "split it into one source per folder by hand")
+    return {"name": source.name, "format": source.format, "root": roots[0] if roots else "", "series": series, "detector": source.detector}
+
+
+def open_definition(path, registries=()) -> dict:
+    """The form (the JSON the page sends, see the top of this module) of the definition file `path` and of its run metadata, so that a processing
+    can start from an existing one. goldpan loads and checks the file first. Returns ``{"form", "notes"}``: `notes` say what could not be carried
+    over as it is (a registry goldmap was not started with, a series not on this computer, a metadata column the page does not show).
+    `registries` are the registry folders goldmap was started with; the form names those of them that the definition names.
+    `ValueError` for a file goldmap cannot represent (a source that sets its own readout or channels, another format, an unknown algorithm)."""
+    path = Path(path).expanduser().resolve()
+    spec = dataset.load(path)
+    raw, notes = spec.raw, []
+    head = raw.get("dataset", {})
+    form = {"name": spec.name, "output": head.get("output", ""), "description": head.get("description", ""), "folder": _posix(path.parent),
+            "output_format": spec.output_format, "root_detector": head.get("root_detector", "")}
+    wanted = [path.parent / Path(r).expanduser() for r in head.get("registry", [])]
+    form["registry"] = [r for r in registries if any(_same_folder(r, w) for w in wanted)]
+    for w in wanted:
+        if not any(_same_folder(r, w) for r in registries):
+            notes.append(f"the definition names the registry {_posix(w.resolve())}, which goldmap was not started with: start it with --registry {_posix(w.resolve())}")
+    form["sources"] = [_open_source(r, s, notes) for r, s in zip(raw.get("sources", []), spec.sources)]
+    from goldsluice import ALGORITHMS
+    form["steps"] = []
+    for i, step in enumerate(raw.get("processing", [])):
+        algorithm = step.get("algorithm")
+        if algorithm not in ALGORITHMS:
+            raise ValueError(f"step {i + 1}: this goldsluice has no algorithm {algorithm!r} (it has {', '.join(sorted(ALGORITHMS))}); "
+                             "rebuild goldsluice from an NSDF-Data checkout that has it (maturin develop --release in goldsluice/) and start goldmap again")
+        known = list(inspect.signature(ALGORITHMS[algorithm].problem).parameters)[1:]
+        extra = sorted(set(step.get("params", {})) - set(known))
+        if extra:
+            raise ValueError(f"step {i + 1} ({algorithm}): parameter(s) {extra} that this goldsluice's {algorithm} does not take ({', '.join(known)})")
+        form["steps"].append({k: step[k] for k in ("algorithm", "channels", "params", "name", "input", "suffix", "sources") if k in step})
+    table_ = spec.run_metadata()
+    if table_ is not None:
+        hidden = [c for c in table_ if c != "series" and c not in METADATA_COLUMNS]
+        if hidden:
+            notes.append(f"the run metadata also has column(s) {', '.join(hidden)}, which the page does not show; they are written back as they are")
+        form["metadata_rows"] = _rows(table_)
+    return {"form": form, "notes": notes}
 
 
 # ---- a detector for the registry
