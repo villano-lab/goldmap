@@ -59,16 +59,26 @@ def running(tmp_path):
     srv.server_close()
 
 
-def test_the_api_adds_a_detector_to_the_default_registry_and_only_there(running, tmp_path):
+def test_the_api_adds_a_detector_to_the_default_registry(running, tmp_path):
     status, data = call(running, "GET", "/api/state", token=running.token)
     state = json.loads(data)
     assert state["detectors"] == [] and state["targets"] == [str(tmp_path / "work" / "registry")]
     status, data = call(running, "POST", "/api/detector/preview", FORM, token=running.token)
     assert status == 200 and "[readouts.TEST_READOUT]" in json.loads(data)["text"] and not (tmp_path / "work" / "registry").exists()
-    status, data = call(running, "POST", "/api/detector/add", {**FORM, "target": str(tmp_path / "elsewhere")}, token=running.token)
-    assert status == 400 and "can only be added" in json.loads(data)["error"] and not (tmp_path / "elsewhere").exists()
     status, data = call(running, "POST", "/api/detector/add", FORM, token=running.token)
-    assert status == 200 and (tmp_path / "work" / "registry" / "detectors.toml").exists()
+    assert status == 200 and (tmp_path / "work" / "registry" / "detectors.toml").exists() and json.loads(data)["registry"] == str(tmp_path / "work" / "registry")
     state = json.loads(call(running, "GET", "/api/state", token=running.token)[1])
     assert [d["name"] for d in state["detectors"]] == ["TEST-DET"] and [r["name"] for r in state["readouts"]] == ["TEST_READOUT"]
     assert call(running, "POST", "/api/detector/add", FORM, token=None)[0] == 403
+
+
+def test_a_detector_can_go_to_any_folder_which_is_made_and_read_from_then_on(running, tmp_path):
+    elsewhere = tmp_path / "shared" / "registries" / "lab"                                   # does not exist yet
+    status, data = call(running, "POST", "/api/detector/add", {**FORM, "target": str(elsewhere)}, token=running.token)
+    assert status == 200 and (elsewhere / "detectors.toml").exists() and (elsewhere / "readouts.toml").exists()
+    state = json.loads(call(running, "GET", "/api/state", token=running.token)[1])
+    assert str(elsewhere) in state["registry"] and [d["name"] for d in state["detectors"]] == ["TEST-DET"]
+    second = {**FORM, "name": "TEST-DET2", "readout": "TEST_READOUT", "new_readout": None}
+    status, data = call(running, "POST", "/api/detector/add", {**second, "target": str(elsewhere)}, token=running.token)
+    assert status == 200 and json.loads(data)["registry"] == str(elsewhere)                    # the same folder again: named once
+    assert json.loads(call(running, "GET", "/api/state", token=running.token)[1])["registry"].count(str(elsewhere)) == 1

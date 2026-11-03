@@ -46,7 +46,7 @@ one it refuses does not open.
 
 - The series of a source are found on the disk from its `paths` or `glob`, so a `glob` over many series opens as the series it matches. A pattern
   that matches nothing on this computer is reported, and its series stay chosen when the pattern names them.
-- A registry the definition names that goldmap was not started with is reported (start goldmap with `--registry` for it).
+- A registry the definition names that goldmap does not read yet is picked up (and said so).
 - Columns of the run metadata that the page does not show (`dumps_in_output`, `from`, ...) are kept and written back as they were.
 - A definition goldmap cannot represent is refused with the reason: a source that sets its own `readout` or `read` (goldmap takes those from the
   registry), a format other than idx, dumps of one source in several folders, or an algorithm or parameter the installed goldsluice does not have.
@@ -59,14 +59,27 @@ rows of the series it chose.
 | `--registry DIR` | folder of detector records (`goldpan.registry`); repeat for several; `GOLDPAN_REGISTRY` is used too |
 | `--series-list CSV` | a CSV with a `series` column and what is known about each series (`nsdf_r76_series.csv`: `HV`, `trigger`, `type`, ...) to prefill the metadata |
 | `--root DIR` | a folder of raw dumps to offer (default `~/idx`); repeat for several |
-| `--folder DIR` | where the definition and the metadata are written (default: the current folder) |
+| `--folder DIR` | where the definition and the metadata are written (default: the current folder); the Files tab can name another, which is made if it does not exist |
 | `--port N` | the port on 127.0.0.1 (default: any free one) |
+
+## Registries
+
+goldmap reads the registry folders given with `--registry`. Two more ways need no restart: **Use a registry from another folder**, under *Registries*
+on the Data tab, picks up an existing registry folder (goldpan reads it, so a folder with no records or a broken one is refused), and the
+**+ Detector** tab makes a registry by writing a detector into a new folder. Either folder is read from then on and ticked; the tick says which
+registries a processing uses, and the definition names only the ticked ones.
+
+Both folder boxes have a **Browse…** button that opens the computer's own folder window (a browser does not tell a page the path of a folder it
+picks, so goldmap opens the window itself, with tkinter in a separate process; it can appear behind the browser). Where it cannot open (no tkinter,
+no display), the path can still be typed.
 
 ## A detector that is not in the registry
 
 The **+ Detector** tab describes a new detector (name, number, readout, channel map, and the evidence for each) and adds it to a registry folder with
 `goldpan.registry.add_record`, which checks it exactly as the reader does and does not touch the rest of the file. Without `--registry` the record goes to a
-`registry` folder inside `--folder`. The page only writes to the registry folders it was started with. To share a detector, add it to the NSDF-Data registry through a pull request.
+`registry` folder inside `--folder`; the box under the form names any other folder (the ones given with `--registry` are suggested). A folder that does
+not exist is made, and a folder that was not a registry yet is read as one from then on and ticked for the processing, so the registry and the
+definitions can live in different places. To share a detector, add it to the NSDF-Data registry through a pull request.
 
 ## Safety
 

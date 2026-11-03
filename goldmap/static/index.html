@@ -111,6 +111,8 @@
     <p class="muted" id="detinfo"></p>
     <details id="regbox"><summary id="regsummary">Registries</summary>
       <div id="registries"></div>
+      <label for="regpath">Use a registry from another folder</label>
+      <div class="row"><input id="regpath" type="text" placeholder="C:/path/to/registry" data-suggest="no"><button id="regbrowse" type="button" title="Choose the folder in a window">Browse…</button><button id="reguse" type="button">Use</button></div>
       <p class="muted" id="regmsg">The detectors and readouts come from the folders that are ticked, and the definition names only those. Several registries are merged; a name may be defined once.</p>
     </details>
     <p class="muted"><button class="link" data-go="newdet">The detector is not listed? Add it to the registry</button></p>
@@ -158,7 +160,8 @@
     <table id="d-channels"><thead><tr><th>Name</th><th>Board</th><th>Input</th><th>Role</th><th></th></tr></thead><tbody></tbody></table>
     <p><button id="d-addchannel" type="button">Add a channel</button></p>
 
-    <label for="d-target">Add it to the registry folder</label><select id="d-target"></select>
+    <label for="d-target">Add it to the registry folder (any folder; it is made if it does not exist, and read as a registry from then on)</label>
+    <div class="row"><input id="d-target" type="text" list="d-targets" autocomplete="off" data-suggest="no"><datalist id="d-targets"></datalist><button id="d-browse" type="button" title="Choose the folder in a window">Browse…</button></div>
     <div class="actions"><button data-go="data">Back</button><div><button id="d-preview">Preview</button><button id="d-add" class="primary">Add to the registry</button></div></div>
     <p id="d-msg"></p>
     <pre id="d-out" hidden></pre>
@@ -180,9 +183,9 @@
       <div class="list"><table id="meta"><thead><tr><th>Series</th><th>hv_v</th><th>trigger</th><th>trigger_value</th><th>type</th><th>source_shield</th><th>duration_min</th></tr></thead><tbody></tbody></table></div>
       <p class="muted">Prefilled from the series list. Leave a column empty to leave it out.</p>
     </details>
+    <label for="folder">Write the definition and its <code>series.csv</code> into (made if it does not exist)</label><input id="folder" type="text" data-suggest="no">
     <details>
       <summary>More</summary>
-      <label for="folder">Write the files into</label><input id="folder" type="text">
       <label for="description">Description</label><input id="description" type="text" placeholder="What this processing is for" data-suggest="no">
     </details>
     <div class="actions"><button data-go="steps">Back</button><div><button id="validate" title="Run goldsluice check on this definition without writing any file">Validate</button><button id="preview">Preview</button><button id="write" class="primary">Write and check</button></div></div>
@@ -375,6 +378,24 @@ function toggleRegistry(folder, cb) {
   } else regOn.add(folder);
   $("regmsg").className = "muted"; $("regmsg").textContent = "The detectors and readouts come from the folders that are ticked, and the definition names only those. Several registries are merged; a name may be defined once.";
   drawRegistries(); drawDetectors(cur.detector); drawNewDetector(); summary(); drawGraph();
+}
+async function browseFolder(input, title, msg, then) {   // the computer's folder window (opened by goldmap): the chosen folder goes into `input`
+  const button = document.activeElement; if (button) button.disabled = true;
+  msg.textContent = "A folder window is open (it may be behind this one)…"; msg.className = "muted";
+  try {
+    const r = await api("/api/choose-folder", {start: input.value.trim(), title});
+    msg.textContent = ""; if (r.path) { input.value = r.path; if (then) await then(); }
+  } catch (e) { msg.textContent = e.message; msg.className = "muted bad"; }
+  finally { if (button) button.disabled = false; }
+}
+async function useRegistry() {                       // pick up an existing registry folder: read from now on, and ticked
+  const msg = $("regmsg");
+  try {
+    const r = await api("/api/registry", {path: $("regpath").value.trim()});
+    state = await api("/api/state"); regOn.add(r.registry); $("regpath").value = "";
+    drawRegistries(); drawDetectors(cur.detector); drawNewDetector(); summary(); drawGraph();
+    msg.textContent = `Using ${r.registry}: ${r.detectors} detector${r.detectors === 1 ? "" : "s"}, ${r.readouts} readout${r.readouts === 1 ? "" : "s"}.`; msg.className = "muted good";
+  } catch (e) { msg.textContent = e.message; msg.className = "muted bad"; }
 }
 const baseName = (p) => (p || "").split("/").pop().split(String.fromCharCode(92)).pop();
 function drawDetectors(value) {
@@ -772,6 +793,7 @@ async function openDefinition() {
   let result;
   try { result = await api("/api/open", {path: $("openpath").value.trim()}); } catch (e) { msg.textContent = e.message; msg.className = "muted bad"; return; }
   const f = result.form, notes = [...result.notes];
+  try { state = await api("/api/state"); } catch (e) { /* keep what the page has */ }                 // a registry the file names may have been picked up
   steps.forEach((s) => s.box.remove()); steps = []; selected = null; $("nosteps").hidden = false;     // the page starts over from the file
   regOn = new Set(f.registry); drawRegistries();
   sources = f.sources.map((fs) => Object.assign(newSource(), {name: fs.name, root: fs.root, detector: fs.detector, picked: new Set(fs.series)}));
@@ -840,13 +862,14 @@ function drawNewDetector() {
     el("option", {value: "@new", textContent: "a new readout…"}));
   sel.value = keep && [...sel.options].some((o) => o.value === keep) ? keep : (liveReadouts().length ? liveReadouts()[0].name : "@new");
   $("d-newreadout").hidden = sel.value !== "@new";
-  $("d-target").replaceChildren(...liveTargets().map((t) => el("option", {value: t, textContent: t})));
+  $("d-targets").replaceChildren(...liveTargets().map((t) => el("option", {value: t})));
+  if (!$("d-target").value.trim()) $("d-target").value = liveTargets()[0] || "";
   if (!$("d-channels").querySelector("tbody tr")) channelRow();
 }
 function detectorForm() {
   const choice = $("d-readout").value;
   const out = {name: $("d-name").value.trim(), number: $("d-number").value, description: $("d-description").value.trim(), status: $("d-status").value,
-    evidence: $("d-evidence").value.trim(), series: $("d-series").value.split(",").map((x) => x.trim()).filter(Boolean), target: $("d-target").value,
+    evidence: $("d-evidence").value.trim(), series: $("d-series").value.split(",").map((x) => x.trim()).filter(Boolean), target: $("d-target").value.trim(),
     readout: choice && choice !== "@new" ? choice : null, new_readout: null,
     channels: [...$("d-channels").querySelectorAll("tbody tr")].map((tr) => { const i = tr.querySelectorAll("input"); return {name: i[0].value, detector: i[1].value, input: i[2].value, role: i[3].value}; })};
   if (choice === "@new") out.new_readout = {name: $("r-name").value.trim(), pretrigger_samples: $("r-pre").value, glitch_samples: $("r-glitch").value,
@@ -862,8 +885,9 @@ async function detectorRun(kind) {
       $("d-out").textContent = r.text; $("d-out").hidden = false; msg.textContent = "This is what would be added to the registry."; msg.className = "good"; return;
     }
     const r = await api("/api/detector/add", form);
-    state = await api("/api/state"); state.registry.forEach((f) => { if (!regOn.has(f) && f === form.target) regOn.add(f); }); drawRegistries(); drawDetectors(form.name); drawNewDetector(); summary(); drawGraph();
-    msg.textContent = "Added: " + r.files.join(", "); msg.className = "good";
+    const known = new Set(state.registry);
+    state = await api("/api/state"); regOn.add(r.registry); drawRegistries(); drawDetectors(form.name); drawNewDetector(); summary(); drawGraph();
+    msg.textContent = "Added: " + r.files.join(", ") + (known.has(r.registry) ? "" : ` (${r.registry} is now a registry of this processing)`); msg.className = "good";
     show("data");
   } catch (e) { msg.textContent = e.message; msg.className = "bad"; }
 }
@@ -883,6 +907,10 @@ async function detectorRun(kind) {
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => show(b.dataset.go)));
   $("scan").addEventListener("click", scan);
   $("open").addEventListener("click", openDefinition);
+  $("reguse").addEventListener("click", useRegistry);
+  $("regbrowse").addEventListener("click", () => browseFolder($("regpath"), "Choose a registry folder to use", $("regmsg"), useRegistry));
+  $("d-browse").addEventListener("click", () => browseFolder($("d-target"), "Choose the registry folder for the detector (or make a new one)", $("d-msg")));
+  $("regpath").addEventListener("keydown", (e) => { if (e.key === "Enter") useRegistry(); });
   $("openpath").addEventListener("keydown", (e) => { if (e.key === "Enter") openDefinition(); });
   ["filter", "f-hvmin", "f-hvmax", "f-dur"].forEach((id) => $(id).addEventListener("input", applyFilter));
   ["f-trigger", "f-type", "f-shield"].forEach((id) => $(id).addEventListener("change", applyFilter));

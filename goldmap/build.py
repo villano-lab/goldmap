@@ -12,11 +12,13 @@ The form is plain JSON (what the page sends)::
 `open_definition` goes the other way: an existing definition file -> the form, to start another processing from it.
 `goldpan.dataset` writes and checks the definition and `goldpan.runmeta` the table; nothing here knows the rules of either.
 """
+import contextlib
 import glob as globmod
 import importlib.util
 import inspect
 import os
 import re
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -35,8 +37,11 @@ def _posix(path) -> str:
 
 
 def _registry_path(folder: Path, registry: str, absolute: bool = False) -> str:
-    """The registry folder as the definition writes it: relative to the folder of the definition when that is possible, else as given."""
+    """The registry folder as the definition writes it: relative to the folder of the definition when that is close, else in full. A relative
+    `registry` (``--registry registry``) is taken from the folder goldmap was started in, as it is read; written as given it would be read
+    from the folder of the definition instead."""
     given = Path(registry).expanduser()
+    given = given if given.is_absolute() else given.resolve()
     if absolute:
         return _posix(given.resolve())
     try:
@@ -142,9 +147,32 @@ def header(form: dict) -> str:
     return f"Made with goldmap. Check:  python -m goldsluice check {form['name']}.dataset.toml"
 
 
+@contextlib.contextmanager
+def _folder_for_check(folder: Path, keep: bool):
+    """`folder`, made if it does not exist, for goldpan's check of a definition that will be in it: a registry written relative to it
+    (``../registry``) is looked up through it, and Linux and macOS cannot go through ``..`` of a folder that is not there. What was made is
+    removed again unless `keep`, or when the check fails, so a refused form (and a preview) leaves nothing behind."""
+    top = None
+    for p in [folder, *folder.parents]:                                   # the outermost folder that has to be made
+        if p.exists():
+            break
+        top = p
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        yield folder
+    except BaseException:
+        if top is not None:
+            shutil.rmtree(top, ignore_errors=True)
+        raise
+    if top is not None and not keep:
+        shutil.rmtree(top, ignore_errors=True)
+
+
 def preview(form: dict, folder) -> str:
-    """The text of the definition file, checked by goldpan; `ValueError` says what is wrong."""
-    return dataset.dumps(definition(form, folder), base=folder, header=header(form))
+    """The text of the definition file, checked by goldpan; `ValueError` says what is wrong. Nothing is written."""
+    folder = Path(folder).expanduser().resolve()
+    with _folder_for_check(folder, keep=False):
+        return dataset.dumps(definition(form, folder), base=folder, header=header(form))
 
 
 def validate(form: dict, folder=None) -> dict:
@@ -180,8 +208,8 @@ def write(form: dict, folder) -> dict:
     if form.get("metadata_rows"):
         form = {**form, "metadata": True}
     spec = definition(form, folder)
-    text = dataset.dumps(spec, base=folder, header=header(form))             # refuse before anything is written
-    folder.mkdir(parents=True, exist_ok=True)
+    with _folder_for_check(folder, keep=True):                                # made if it does not exist; removed again if goldpan refuses
+        text = dataset.dumps(spec, base=folder, header=header(form))         # refuse before anything is written
     meta = None
     if form.get("metadata_rows"):
         meta = folder / METADATA_FILE
@@ -243,11 +271,12 @@ def _open_source(raw: dict, source, notes: list) -> dict:
     return {"name": source.name, "format": source.format, "root": roots[0] if roots else "", "series": series, "detector": source.detector}
 
 
-def open_definition(path, registries=()) -> dict:
+def open_definition(path, registries=(), use=None) -> dict:
     """The form (the JSON the page sends, see the top of this module) of the definition file `path` and of its run metadata, so that a processing
     can start from an existing one. goldpan loads and checks the file first. Returns ``{"form", "notes"}``: `notes` say what could not be carried
     over as it is (a registry goldmap was not started with, a series not on this computer, a metadata column the page does not show).
-    `registries` are the registry folders goldmap was started with; the form names those of them that the definition names.
+    `registries` are the registry folders goldmap reads; the form names those of them that the definition names. Another folder the definition
+    names is picked up with `use(folder)` (which returns the name goldmap gives it) when one is given.
     `ValueError` for a file goldmap cannot represent (a source that sets its own readout or channels, another format, an unknown algorithm)."""
     path = Path(path).expanduser().resolve()
     spec = dataset.load(path)
@@ -259,7 +288,11 @@ def open_definition(path, registries=()) -> dict:
     form["registry"] = [r for r in registries if any(_same_folder(r, w) for w in wanted)]
     for w in wanted:
         if not any(_same_folder(r, w) for r in registries):
-            notes.append(f"the definition names the registry {_posix(w.resolve())}, which goldmap was not started with: start it with --registry {_posix(w.resolve())}")
+            if use is not None and w.is_dir():                         # goldpan loaded the file, so the folder is a registry it can read
+                form["registry"].append(use(_posix(w.resolve())))
+                notes.append(f"picked up the registry {_posix(w.resolve())}, which the definition names")
+            else:
+                notes.append(f"the definition names the registry {_posix(w.resolve())}, which goldmap does not read: use it under Registries on the Data tab")
     form["sources"] = [_open_source(r, s, notes) for r, s in zip(raw.get("sources", []), spec.sources)]
     from goldsluice import ALGORITHMS
     form["steps"] = []

@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import build, catalog
+from . import build, catalog, dialog
 
 STATIC = Path(__file__).parent / "static"
 
@@ -35,8 +35,16 @@ class Config:
         return str(Path(self.folder) / "registry")
 
     def targets(self) -> list:
-        """The registry folders a detector may be added to: the given ones, or the default one."""
+        """The registry folders to offer for a new detector: the given ones, or the default one. Any other folder may be named too."""
         return self.registry or [self.default_registry()]
+
+    def use_registry(self, folder) -> str:
+        """Read `folder` as a registry from now on (a detector was just added to it), and return it as `registries` names it."""
+        for f in self.registries():
+            if Path(f).expanduser().resolve() == Path(folder).expanduser().resolve():
+                return f
+        self.registry = self.registries() + [str(folder)]
+        return str(folder)
 
 
 def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
@@ -113,11 +121,21 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
                 folder = form.pop("folder", None) or config.folder
                 if self.path == "/api/detector/preview":
                     return self._json(200, {"text": build.detector_preview(form)})
-                if self.path == "/api/detector/add":
-                    target = form.pop("target", None) or config.targets()[0]
-                    if target not in config.targets():
-                        return self._json(400, {"error": f"a detector can only be added to {config.targets()}"})
-                    return self._json(200, build.detector_add(form, target))
+                if self.path == "/api/choose-folder":                  # the computer's folder window; blocks this request until it is closed
+                    return self._json(200, {"path": dialog.choose_folder(str(form.get("start") or ""), str(form.get("title") or "Choose a folder"))})
+                if self.path == "/api/registry":                       # pick up an existing registry folder, read from then on
+                    given = str(form.get("path") or "").strip()              # `path`: the `folder` key of a request is where definitions go
+                    reg_folder = Path(given).expanduser()
+                    if not given or not reg_folder.is_dir():
+                        return self._json(400, {"error": f"{given or '(empty)'}: no such folder. To make a new registry, add a detector to the folder on the + Detector tab"})
+                    found = catalog.detectors([reg_folder]), catalog.readouts([reg_folder])   # goldpan reads it, so a broken registry is refused here
+                    if not any(found):
+                        return self._json(400, {"error": f"{given}: no detectors or readouts in it (a registry folder holds .toml files of records)"})
+                    return self._json(200, {"registry": config.use_registry(given), "detectors": len(found[0]), "readouts": len(found[1])})
+                if self.path == "/api/detector/add":                   # into any registry folder (made if it does not exist), read from then on
+                    target = str(form.pop("target", None) or "").strip() or config.targets()[0]
+                    result = build.detector_add(form, target)
+                    return self._json(200, {**result, "registry": config.use_registry(target)})
                 if self.path == "/api/validate":
                     return self._json(200, build.validate(form, folder))
                 if self.path == "/api/preview":
@@ -131,7 +149,7 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
                     path = path if path.is_absolute() else Path(config.folder).expanduser() / path
                     if not path.is_file():
                         return self._json(400, {"error": f"{path}: no such file"})
-                    return self._json(200, build.open_definition(path, config.registries()))
+                    return self._json(200, build.open_definition(path, config.registries(), use=config.use_registry))
             except (ValueError, OSError, KeyError, TypeError) as e:
                 return self._json(400, {"error": str(e)})
             except Exception as e:                                       # a bug, or a library that is too old: say so instead of dropping the connection

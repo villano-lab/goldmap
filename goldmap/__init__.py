@@ -7,5 +7,6 @@ definition (`goldpan.dataset`) and the run-metadata CSV (`goldpan.runmeta`). The
     catalog   what the page offers: the algorithms, the detectors of a registry, the series on a disk, the facts of a series list
     build     the form of the page -> the definition and the metadata table -> the files
     server    the local web server
+    dialog    the computer's own window for choosing a folder
 """
 __version__ = "0.1.0"

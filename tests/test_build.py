@@ -30,6 +30,31 @@ def test_write_makes_a_definition_goldpan_loads_and_a_table_it_reads(tmp_path, i
     assert result["metadata"] == str(folder.resolve() / "series.csv")
 
 
+def test_the_folder_of_the_definition_is_made_beside_its_registry_and_a_refused_form_leaves_none(tmp_path, idx, registry):
+    import shutil
+    reg = tmp_path / "project" / "registry"
+    shutil.copytree(registry, reg)
+    folder = tmp_path / "project" / "processing" / "r76"                                     # does not exist; the registry is written ../../registry
+    assert "registry" in build.preview(form(idx, reg, tmp_path / "out"), folder) and not (tmp_path / "project" / "processing").exists()
+    result = build.write(form(idx, reg, tmp_path / "out"), folder)
+    assert result["problem"] is None and dataset.load(result["definition"]).registry.detectors()
+    bad = form(idx, reg, tmp_path / "out")
+    bad["steps"][1]["input"] = "nobody"                                                    # goldpan refuses a step that reads an unknown name
+    with pytest.raises(ValueError):
+        build.write(bad, tmp_path / "project" / "other" / "deeper")
+    assert not (tmp_path / "project" / "other").exists()
+
+
+def test_a_registry_given_relative_to_the_start_folder_is_found_from_a_definition_far_away(tmp_path, idx, registry, monkeypatch):
+    import shutil
+    shutil.copytree(registry, tmp_path / "start" / "registry")
+    monkeypatch.chdir(tmp_path / "start")                                                   # goldmap --registry registry, started here
+    result = build.write(form(idx, "registry", tmp_path / "out"), tmp_path / "far" / "away" / "processing")
+    assert result["problem"] is None and dataset.load(result["definition"]).registry.detectors()
+    near = build.write(form(idx, "registry", tmp_path / "out"), tmp_path / "start" / "processing")
+    assert 'registry = ["../registry"]' in open(near["definition"], encoding="utf-8").read()       # close by: still written relative
+
+
 def test_the_check_reports_a_series_that_is_not_on_the_disk_but_the_files_are_written(tmp_path, idx, registry):
     f = form(idx, registry, tmp_path / "out")
     f["sources"][0]["series"].append("07229999_0001")

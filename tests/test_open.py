@@ -48,7 +48,7 @@ def test_what_cannot_be_carried_over_as_it_is_is_said(tmp_path, idx, registry):
     runmeta.write_table(tmp_path / "far.csv", {"series": ["07229999_0001"], "hv_v": [-82.0], "dumps_in_output": [12.0], "from": ["a note"]})
     opened = build.open_definition(path, [])                                                 # goldmap was started without the registry
     notes = " | ".join(opened["notes"])
-    assert "matches no dump on this computer" in notes and "was not started with" in notes and "dumps_in_output, from" in notes
+    assert "matches no dump on this computer" in notes and "does not read" in notes and "dumps_in_output, from" in notes
     f = opened["form"]
     assert f["sources"][0]["series"] == ["07229999_0001"] and f["registry"] == []
     assert f["metadata_rows"] == [{"series": "07229999_0001", "hv_v": -82.0, "dumps_in_output": 12.0, "from": "a note"}]
@@ -80,6 +80,28 @@ def test_a_definition_goldmap_cannot_represent_is_refused_with_the_reason(tmp_pa
                      'pretrigger_samples = 500\nwindow = 3\n', encoding="utf-8")
     with pytest.raises(ValueError):                                                          # goldpan or goldmap refuses a parameter the algorithm does not take
         build.open_definition(extra, [str(registry)])
+
+
+def test_a_registry_folder_is_picked_up_through_the_api_and_by_opening_a_definition_that_names_it(tmp_path, idx, registry):
+    import shutil
+    lab = tmp_path / "lab" / "registry"
+    shutil.copytree(registry, lab)
+    srv = server.make_server(server.Config([], None, [idx], tmp_path / "work"))              # started without any registry
+    server.serve_in_thread(srv)
+    try:
+        for bad in ("", str(tmp_path / "nowhere"), str(idx)):                                # no folder, a missing one, one with no records
+            assert call(srv, "POST", "/api/registry", {"path": bad}, token=srv.token)[0] == 400
+        status, data = call(srv, "POST", "/api/registry", {"path": str(lab)}, token=srv.token)
+        assert status == 200 and json.loads(data)["registry"] == str(lab) and json.loads(data)["detectors"] >= 1
+        state = json.loads(call(srv, "GET", "/api/state", token=srv.token)[1])
+        assert state["registry"] == [str(lab)] and "NAI-S2" in {d["name"] for d in state["detectors"]}
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    build.write(form(idx, lab, tmp_path / "out"), tmp_path / "lab" / "processing")          # a definition that names ../registry
+    picked = []
+    opened = build.open_definition(tmp_path / "lab" / "processing" / "r76-test.dataset.toml", [], use=lambda f: picked.append(f) or f)
+    assert len(picked) == 1 and opened["form"]["registry"] == picked and "picked up the registry" in opened["notes"][0]
 
 
 def test_open_and_the_list_of_definitions_work_through_the_api(tmp_path, idx, registry):
