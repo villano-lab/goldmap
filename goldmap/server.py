@@ -96,6 +96,7 @@ def make_server(config: Config, port: int = 0) -> ThreadingHTTPServer:
                     facts = catalog.series_facts(config.series_list) if config.series_list else {}
                     return self._json(200, {"algorithms": catalog.algorithms(), "detectors": catalog.detectors(config.registries()),
                                             "readouts": catalog.readouts(config.registries()), "registry": config.registries(),
+                                            "registry_full": {f: str(Path(f).expanduser().resolve()).replace("\\", "/") for f in config.registries()},     # where each one is
                                             "targets": config.targets(), "roots": config.roots, "folder": config.folder, "facts": facts,
                                             "output_root": os.environ.get("GOLDSLUICE_OUTPUT", "").strip() or "~/goldsluice-output"})
                 if url.path == "/api/scan":

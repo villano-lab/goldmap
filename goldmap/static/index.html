@@ -365,7 +365,8 @@ function drawRegistries() {
     const n = state.detectors.filter((d) => d.registry === f).length, m = state.readouts.filter((r) => r.registry === f).length;
     const cb = el("input", {type: "checkbox", checked: regOn.has(f)});
     cb.addEventListener("change", () => toggleRegistry(f, cb));
-    box.append(el("label", {className: "check"}, cb, el("span", {textContent: f}), el("span", {className: "muted", textContent: `${n} detector${n === 1 ? "" : "s"}, ${m} readout${m === 1 ? "" : "s"}`})));
+    const full = (state.registry_full || {})[f] || f;                  // where the folder is, not the path as goldmap was given it
+    box.append(el("label", {className: "check", title: full}, cb, el("span", {textContent: full}), el("span", {className: "muted", textContent: `${n} detector${n === 1 ? "" : "s"}, ${m} readout${m === 1 ? "" : "s"}`})));
   });
   $("regsummary").textContent = state.registry.length ? `Registries: ${[...regOn].length} of ${state.registry.length} ticked` : "Registries: none given";
   $("regbox").open = $("regbox").open || state.registry.length > 1;
@@ -407,8 +408,9 @@ function drawDetectors(value) {
 }
 function showDetector() {
   const d = detector();
-  $("detinfo").textContent = !d ? (liveDetectors().length ? "" : "No registry was given: start goldmap with --registry DIR, or add a detector with the + Detector tab.")
-    : `${d.description} Channels: ${d.channels.map((c) => c.name).join(", ") || "none"} · ${d.status} · from ${baseName(d.origin)}.`;
+  const where = d && (state.registry_full || {})[d.registry] ? `${state.registry_full[d.registry]}/${baseName(d.origin)}` : (d ? baseName(d.origin) : "");
+  $("detinfo").textContent = !d ? (liveDetectors().length ? "" : "No registry is in use: pick one up under Registries below, or add a detector with the + Detector tab.")
+    : `${d.description} Channels: ${d.channels.map((c) => c.name).join(", ") || "none"} · ${d.status} · from ${where}.`;
 }
 
 // ---- 2. the steps: boxes on a canvas

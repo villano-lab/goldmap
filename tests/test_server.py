@@ -1,5 +1,6 @@
 import http.client
 import json
+from pathlib import Path
 
 import pytest
 
@@ -37,6 +38,7 @@ def test_the_page_carries_the_token_and_the_api_needs_it(running):
     status, data = call(running, "GET", "/api/state", token=running.token)
     state = json.loads(data)
     assert status == 200 and "peak" in {a["name"] for a in state["algorithms"]} and "NAI-S2" in {d["name"] for d in state["detectors"]}
+    assert state["registry_full"] == {f: str(Path(f).resolve()).replace("\\", "/") for f in state["registry"]}        # the page shows where each one is
 
 
 def test_a_request_with_another_host_name_is_refused(running):
