@@ -8,7 +8,7 @@ name: tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:

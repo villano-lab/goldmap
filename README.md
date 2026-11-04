@@ -97,3 +97,7 @@ The tests use the registry folder of the NSDF-Data checkout that goldpan was ins
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Contributing
+
+Git Flow: work on `feature/*` branches from `develop`, pull requests into `develop`, releases through `release/X.Y.Z` into `main`. See `CONTRIBUTING.md`; changes are listed in `CHANGELOG.md`.
