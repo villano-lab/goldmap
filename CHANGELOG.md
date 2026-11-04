@@ -10,6 +10,7 @@ The first release. It needs `goldpan` 0.3.0 and `goldsluice` 0.1.0 (both on PyPI
 
 ### Added
 
+- A workflow that publishes goldmap to PyPI (`.github/workflows/publish-goldmap.yml`) and `tools/check_release.py`. On a tag `vX.Y.Z` it builds the wheel and the source archive, installs the wheel in a clean environment and starts it, and uploads with a trusted publisher after the maintainer approves the `pypi` environment; run by hand it is a dry run. The checker makes sure the tag, the version in `pyproject.toml` and in `goldmap/__init__.py`, and the changelog section agree.
 - A local browser app (`python -m goldmap`) that makes the dataset definition and the run-metadata CSV for a goldsluice processing, and checks them with goldpan and goldsluice.
 - Tabs Data, Steps, Files and + Detector. Data: scan a folder of dumps, filters on HV, trigger, type, source and length, choose the detector from the registry.
 - A steps canvas of draggable boxes: drag a filter's dot onto a step to chain them, numbered run order, Tab completes the grey suggestions.
