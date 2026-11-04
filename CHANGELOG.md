@@ -4,6 +4,10 @@ All notable changes to goldmap. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-04
+
+The first release. It needs `goldpan` 0.3.0 and `goldsluice` 0.1.0 (both on PyPI): `pip install goldmap`.
+
 ### Added
 
 - A local browser app (`python -m goldmap`) that makes the dataset definition and the run-metadata CSV for a goldsluice processing, and checks them with goldpan and goldsluice.

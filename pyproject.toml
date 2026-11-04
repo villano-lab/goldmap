@@ -12,7 +12,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
-dependencies = ["goldpan>=0.2.0", "goldsluice"]
+dependencies = ["goldpan[parquet]>=0.3.0", "goldsluice>=0.1.0"]
 
 [project.optional-dependencies]
 test = ["pytest"]

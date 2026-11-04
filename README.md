@@ -92,7 +92,7 @@ carries a random token that every request must send back, and the `Host` header 
 python -m pytest
 ```
 
-The tests use the registry folder of the NSDF-Data checkout that goldpan was installed from, and skip without it.
+The tests use the registry folder of the NSDF-Data checkout that goldpan was installed from, or the one named by the environment variable `GOLDMAP_TEST_REGISTRY` (the released goldpan has no registry folder), and skip without it.
 
 ## License
 
