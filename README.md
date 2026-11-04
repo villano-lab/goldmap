@@ -92,8 +92,12 @@ carries a random token that every request must send back, and the `Host` header 
 python -m pytest
 ```
 
-The tests use the registry folder of the NSDF-Data checkout that goldpan was installed from, and skip without it.
+The tests use the registry folder of the NSDF-Data checkout that goldpan was installed from, or the one named by the environment variable `GOLDMAP_TEST_REGISTRY` (the released goldpan has no registry folder), and skip without it.
 
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Contributing
+
+Git Flow: work on `feature/*` branches from `develop`, pull requests into `develop`, releases through `release/X.Y.Z` into `main`. See `CONTRIBUTING.md`; changes are listed in `CHANGELOG.md`.

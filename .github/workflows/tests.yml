@@ -1,14 +1,14 @@
 name: tests
 
-# Runs the tests of goldmap on Linux, Windows and macOS. goldmap sits on top of goldpan and goldsluice, which live in NSDF-Data (goldsluice is
-# not on PyPI: it is a Rust extension), so the job checks out NSDF-Data (its `develop` branch), installs goldpan from there, builds the
-# goldsluice wheel with maturin (Rust is already on the runners) and installs both before it tests goldmap. The tests read the registry
-# folder of that checkout. A weekly run tells when a change in NSDF-Data `develop` breaks goldmap.
+# Runs the tests of goldmap on Linux, Windows and macOS. goldmap sits on top of goldpan and goldsluice (both on PyPI), so the job installs the
+# released packages that goldmap asks for (pyproject.toml). The tests also need the detector registry, which is data in NSDF-Data and not part
+# of the package, so the job checks out NSDF-Data (`main`, the released code) for that folder only. A weekly run tells when a new release of
+# goldpan or goldsluice breaks goldmap.
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
@@ -31,26 +31,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out goldpan and goldsluice (NSDF-Data, develop)
+      - name: Check out the detector registry (NSDF-Data, main)
         uses: actions/checkout@v4
         with:
           repository: villano-lab/NSDF-Data
-          ref: develop
+          ref: main
           path: nsdf
+          sparse-checkout: registry
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install goldpan and build goldsluice
+      - name: Install goldmap with the goldpan and goldsluice it asks for, from PyPI
         run: |
-          python -m pip install maturin pytest numpy
-          python -m pip install -e "nsdf/python[parquet]"
-          maturin build --manifest-path nsdf/goldsluice/Cargo.toml --out dist
-          python -m pip install --no-index --find-links dist goldsluice
-
-      - name: Install goldmap
-        run: python -m pip install --no-deps -e .
+          python -m pip install pytest
+          python -m pip install -e .
+          python -m pip list
 
       - name: Tests
-        run: python -m pytest -q
+        env:
+          GOLDMAP_TEST_REGISTRY: ${{ github.workspace }}/nsdf/registry
+        run: python -m pytest -q -rs
