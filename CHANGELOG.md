@@ -4,6 +4,10 @@ All notable changes to goldmap. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-04
+
+The first release. It needs `goldpan` 0.3.0 and `goldsluice` 0.1.0 (both on PyPI): `pip install goldmap`.
+
 ### Added
 
 - A workflow that publishes goldmap to PyPI (`.github/workflows/publish-goldmap.yml`) and `tools/check_release.py`. On a tag `vX.Y.Z` it builds the wheel and the source archive, installs the wheel in a clean environment and starts it, and uploads with a trusted publisher after the maintainer approves the `pypi` environment; run by hand it is a dry run. The checker makes sure the tag, the version in `pyproject.toml` and in `goldmap/__init__.py`, and the changelog section agree.

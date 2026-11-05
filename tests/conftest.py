@@ -1,16 +1,17 @@
+import os
 from pathlib import Path
 
 import pytest
 
 import goldpan
 
-REGISTRY = Path(goldpan.__file__).resolve().parents[2] / "registry"       # the NSDF-Data registry, when goldpan is the one of a checkout
+REGISTRY = Path(os.environ.get("GOLDMAP_TEST_REGISTRY") or Path(goldpan.__file__).resolve().parents[2] / "registry")   # the NSDF-Data registry: the folder named by GOLDMAP_TEST_REGISTRY, else that of the checkout goldpan was installed from
 
 
 @pytest.fixture
 def registry():
     if not (REGISTRY / "run76.toml").exists():
-        pytest.skip("needs the registry folder of an NSDF-Data checkout next to goldpan")
+        pytest.skip("needs the registry folder of an NSDF-Data checkout (next to goldpan, or GOLDMAP_TEST_REGISTRY)")
     return REGISTRY
 
 
